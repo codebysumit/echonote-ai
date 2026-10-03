@@ -313,6 +313,18 @@ async def transcribe_audio_file(
             t0         = time.time()
             lang_param = None if (not language or language == "auto") else language
 
+            # Ensure PyAV compatibility patch is active
+            try:
+                import av
+                if not hasattr(av, "_original_open"):
+                    av._original_open = av.open
+                def _safe_open(*args, **kwargs):
+                    kwargs.pop("metadata_errors", None)
+                    return av._original_open(*args, **kwargs)
+                av.open = _safe_open
+            except Exception:
+                pass
+
             # First attempt: with VAD filtering (cleans up silences)
             try:
                 segments, info = model.transcribe(temp_path, vad_filter=True, language=lang_param)

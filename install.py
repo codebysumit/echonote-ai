@@ -128,7 +128,7 @@ def main():
 
     # Step 2: faster-whisper (CPU/GPU via CUDA support in PyTorch)
     print("\n[2/4] Installing faster-whisper (auto GPU/CPU)...")
-    pip("faster-whisper", "av<15.0.0", "huggingface_hub",
+    pip("faster-whisper", "huggingface_hub",
         desc="faster-whisper transcription engine")
 
     # Step 3: Detect hardware and install correct llama-cpp-python wheel

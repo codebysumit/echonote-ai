@@ -14,7 +14,6 @@ cryptography>=42.0.0
 
 # Speech-to-Text & Hugging Face Hub
 faster-whisper>=1.0.0
-av<15.0.0
 huggingface_hub>=0.20.0
 
 # Local LLM Inference (Prebuilt CPU Wheel by default; run python install.py for GPU auto-detect)
