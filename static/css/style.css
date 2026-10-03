@@ -742,18 +742,17 @@ body {
   height: 100vh;
   background: rgba(0, 0, 0, 0.7);
   backdrop-filter: blur(8px);
-  display: flex;
+  display: none;
   align-items: center;
   justify-content: center;
   z-index: 2000;
   opacity: 0;
-  pointer-events: none;
   transition: opacity 0.2s ease;
 }
 
 .modal-overlay.active {
-  opacity: 1;
-  pointer-events: auto;
+  display: flex !important;
+  opacity: 1 !important;
 }
 
 .modal-dialog {
@@ -786,7 +785,7 @@ body {
   border: none;
   color: var(--text-muted);
   font-size: 1.2rem;
-  cursor: pointer;
+  cursor: pointer !important;
 }
 
 .modal-body {
@@ -802,7 +801,7 @@ body {
   border-radius: var(--radius-lg);
   padding: 30px 20px;
   text-align: center;
-  cursor: pointer;
+  cursor: pointer !important;
   transition: var(--transition);
   background: var(--bg-tertiary);
 }
@@ -860,7 +859,7 @@ body {
   padding: 4px 8px;
   font-size: 0.75rem;
   font-weight: 600;
-  cursor: pointer;
+  cursor: pointer !important;
   flex-shrink: 0;
   transition: var(--transition);
 }
@@ -882,7 +881,27 @@ body {
   color: var(--text-secondary);
 }
 
-.form-select, .form-input {
+.form-select {
+  appearance: none !important;
+  -webkit-appearance: none !important;
+  -moz-appearance: none !important;
+  padding: 11px 40px 11px 14px !important;
+  background-color: var(--bg-tertiary) !important;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23818cf8' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E") !important;
+  background-repeat: no-repeat !important;
+  background-position: right 14px center !important;
+  background-size: 16px 16px !important;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-size: 0.9rem;
+  outline: none;
+  cursor: pointer !important;
+  transition: var(--transition);
+  user-select: none;
+}
+
+.form-input {
   padding: 10px 14px;
   background: var(--bg-tertiary);
   border: 1px solid var(--border-subtle);
@@ -890,7 +909,7 @@ body {
   color: var(--text-primary);
   font-size: 0.9rem;
   outline: none;
-  cursor: pointer;
+  cursor: text !important;
   transition: var(--transition);
 }
 
@@ -899,17 +918,43 @@ body {
   background-color: #1c2128 !important;
   color: #f0f6fc !important;
   padding: 8px 12px;
+  cursor: pointer !important;
 }
 
 [data-theme="light"] .form-select option,
 [data-theme="light"] .form-select optgroup {
   background-color: #ffffff !important;
   color: #1f2937 !important;
+  cursor: pointer !important;
 }
 
 .form-select:focus, .form-input:focus {
   border-color: var(--accent-primary);
   box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.25);
+}
+
+/* Global Pointer / Interactive Cursor Rules */
+button,
+select,
+option,
+optgroup,
+.btn-primary,
+.btn-secondary,
+.btn-new-note,
+.tool-btn,
+.tab-btn,
+.cat-pill,
+.chip-btn,
+.modal-tab-btn,
+.note-item-card,
+.dropzone,
+.dropzone-clear-btn,
+.record-pulse-btn,
+.audio-speed-btn,
+.btn-send,
+.btn-close-modal,
+#theme-toggle-btn {
+  cursor: pointer !important;
 }
 
 /* Modal Mode Tabs (Upload / Record / Manual Text) */
