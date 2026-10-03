@@ -1,0 +1,128 @@
+# ─── Python ──────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+*.whl
+pip-wheel-metadata/
+
+# ─── Virtual Environments ────────────────────────────────────────────────────
+.venv/
+venv/
+env/
+ENV/
+.env
+.python-version
+
+# ─── Environment & Secrets (NEVER commit API keys or encryption keys) ────────
+.env
+*.env
+.env.local
+.env.*.local
+secrets.yaml
+secrets.json
+
+# ─── SQLite Database ─────────────────────────────────────────────────────────
+# notes.db contains AES-256 encrypted private user notes.
+# It must NEVER be committed to Git.
+# On first run the app creates it automatically.
+# On subsequent runs the app connects to it and loads all existing data.
+notes.db
+notes.db-shm
+notes.db-wal
+*.db
+*.sqlite3
+
+# ─── Audio Uploads (user files, can be large) ────────────────────────────────
+# The uploads/ folder skeleton is kept via .gitkeep — only audio files are ignored.
+uploads/*
+!uploads/.gitkeep
+*.mp3
+*.wav
+*.m4a
+*.ogg
+*.webm
+*.flac
+*.opus
+*.aac
+
+# ─── AI Model Weights (heavy files — download separately via HuggingFace) ────
+*.gguf
+*.ggml
+*.bin
+*.pt
+*.ckpt
+*.safetensors
+*.pth
+models/
+model_cache/
+.cache/huggingface/
+huggingface/
+
+# ─── Whisper & llama-cpp caches ──────────────────────────────────────────────
+whisper_cache/
+faster_whisper_cache/
+llama_cache/
+~/.cache/huggingface/
+
+# ─── Jupyter Notebook Checkpoints ────────────────────────────────────────────
+notebooks/.ipynb_checkpoints/
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# ─── OS Generated Files ──────────────────────────────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# ─── IDEs & Editors ──────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.classpath
+
+# ─── Logs ────────────────────────────────────────────────────────────────────
+*.log
+logs/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# ─── Coverage & Testing ──────────────────────────────────────────────────────
+.coverage
+.pytest_cache/
+htmlcov/
+.tox/
+nosetests.xml
+coverage.xml
+*.cover
+
+# ─── MyPy ────────────────────────────────────────────────────────────────────
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# ─── Render Deployment ───────────────────────────────────────────────────────
+.render/
+
+# ─── Temp & Scratch ──────────────────────────────────────────────────────────
+tmp/
+temp/
+scratch/
+*.tmp
+*.bak
+*.orig

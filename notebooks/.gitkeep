@@ -1,0 +1,2 @@
+# Keep this file — it preserves the notebooks/ directory in Git.
+# The Jupyter notebook is tracked; model weights and checkpoints are ignored.

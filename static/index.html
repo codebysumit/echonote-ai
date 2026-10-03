@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>EchoNote AI — Local CPU Audio Intelligence Studio</title>
+  <link rel="stylesheet" href="/static/css/style.css" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎙️</text></svg>">
+</head>
+<body>
+  <div id="app-container">
+    <!-- Header Navbar -->
+    <header class="app-header" style="flex-direction: column; height: auto; padding: 0;">
+      <!-- Row 1: Brand & Global Actions -->
+      <div style="width: 100%; display: flex; align-items: center; justify-content: space-between; padding: 0 20px; height: 56px; border-bottom: 1px solid var(--border-subtle);">
+        <div class="brand-container">
+          <div class="brand-logo">🎙️</div>
+          <div>
+            <span class="brand-title">EchoNote AI</span>
+            <span class="brand-badge">🖥️ 100% Local CPU Mode (No API Keys)</span>
+          </div>
+        </div>
+
+        <div class="header-actions">
+          <button class="btn-secondary" id="theme-toggle-btn" onclick="toggleTheme()" title="Toggle Theme">☀️</button>
+          <button class="btn-secondary" onclick="openSettingsModal()" title="Local Settings">⚙️ Settings</button>
+        </div>
+      </div>
+
+      <!-- Row 2: Active Note Title Bar -->
+      <div id="title-bar" style="width: 100%; display: flex; align-items: center; justify-content: space-between; padding: 0 20px; height: 44px; background: var(--bg-tertiary); gap: 12px;">
+        <div style="display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0;">
+          <span style="font-size: 0.75rem; color: var(--text-muted); white-space: nowrap;">📝 Note:</span>
+          <input
+            type="text"
+            id="titlebar-note-title"
+            placeholder="Select or create a note to begin..."
+            style="background: transparent; border: none; border-bottom: 1px solid transparent; color: var(--text-primary); font-size: 0.9rem; font-weight: 600; outline: none; flex: 1; min-width: 0; transition: border-color 0.2s;"
+            onfocus="this.style.borderBottomColor='var(--accent-primary)'"
+            onblur="this.style.borderBottomColor='transparent'"
+            oninput="syncTitleFromTitlebar(this.value)"
+          />
+          <span id="titlebar-unsaved-dot" style="width: 7px; height: 7px; border-radius: 50%; background: var(--accent-primary); display: none; flex-shrink: 0;" title="Unsaved changes"></span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
+          <span id="titlebar-category-pill" style="font-size: 0.7rem; padding: 2px 8px; background: rgba(99,102,241,0.15); color: #818cf8; border: 1px solid rgba(99,102,241,0.3); border-radius: 12px; display: none;"></span>
+          <span id="titlebar-lang-pill" style="font-size: 0.7rem; padding: 2px 8px; background: var(--bg-secondary); color: var(--text-muted); border: 1px solid var(--border-subtle); border-radius: 12px; display: none;"></span>
+          <button id="titlebar-save-btn" class="btn-primary" onclick="saveTranscriptChanges()" title="Save note (Ctrl+S)" style="padding: 5px 14px; font-size: 0.8rem; display: none;">💾 Save</button>
+          <button class="btn-secondary" onclick="openExportModal()" title="Export note" style="padding: 5px 10px; font-size: 0.8rem;">📥 Export</button>
+          <button class="btn-secondary" onclick="deleteActiveNote()" title="Delete note" style="padding: 5px 10px; font-size: 0.8rem; color: var(--danger);">🗑️</button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Studio 3-Column Grid -->
+    <main class="studio-layout">
+      <!-- Left Column: Notes Library -->
+      <aside class="sidebar-panel">
+        <div class="sidebar-header">
+          <button class="btn-new-note" onclick="openUploadModal()">
+            <span>✨</span>
+            <span>+ New Audio Note</span>
+          </button>
+
+          <div class="search-box">
+            <span class="search-icon">🔍</span>
+            <input type="text" id="notes-search-input" placeholder="Search encrypted notes..." />
+          </div>
+        </div>
+
+        <!-- Category Filter Bar -->
+        <div class="category-filter-bar" id="category-filter-bar">
+          <!-- Dynamic Category Pills -->
+        </div>
+
+        <!-- Notes List -->
+        <div class="notes-list" id="notes-list">
+          <!-- Dynamic Note Items -->
+        </div>
+
+        <!-- Sidebar Footer -->
+        <div class="sidebar-footer">
+          <div class="encryption-status">
+            <span>🔒</span>
+            <span>AES-256 Encrypted</span>
+          </div>
+          <span style="font-size: 0.7rem; color: #3fb950;">Offline Ready</span>
+        </div>
+      </aside>
+
+      <!-- Center Column: Workspace & Studio -->
+      <section class="workspace-panel">
+        <!-- Empty State (When no note selected) -->
+        <div class="empty-state-container" id="empty-workspace-state">
+          <div class="empty-icon-glow">🎙️</div>
+          <h2 style="font-family: 'Plus Jakarta Sans', sans-serif; font-size: 1.4rem; margin-bottom: 8px;">Welcome to Smart Audio Notes</h2>
+          <p style="color: var(--text-secondary); max-width: 480px; margin-bottom: 24px; font-size: 0.95rem;">
+            Turn lectures, meetings, teacher lessons, and voice memos into structured intelligence notes with Local CPU Whisper & Gemma. No cloud keys required.
+          </p>
+          <button class="btn-primary" onclick="openUploadModal()" style="padding: 12px 24px; font-size: 0.95rem;">
+            Upload or Record Audio
+          </button>
+        </div>
+
+        <!-- Active Note Workspace -->
+        <div id="active-note-workspace" style="display: none; flex-direction: column; gap: 18px;">
+          <!-- Note Header Card -->
+          <div class="note-header-card">
+            <div class="note-top-row">
+              <input type="text" id="note-title-input" class="editable-title-input" value="Untitled Audio Note" />
+              <div class="note-actions-bar">
+                <span class="note-badge-tag" id="note-category-badge" style="background: rgba(99, 102, 241, 0.15); color: #818cf8; border: 1px solid rgba(99, 102, 241, 0.3);">Category</span>
+                <button class="tool-btn" onclick="saveTranscriptChanges()" title="Save changes">💾 Save</button>
+                <button class="tool-btn" onclick="openRegenerateModal()" title="Re-summarize">🔄 Re-AI</button>
+                <button class="tool-btn" onclick="deleteActiveNote()" title="Delete note" style="color: var(--danger);">🗑️</button>
+              </div>
+            </div>
+
+            <!-- Audio Player Bar -->
+            <div class="audio-player-container" id="audio-player-wrapper">
+              <audio id="main-audio-element" controls class="audio-element"></audio>
+              <button class="audio-speed-btn" id="audio-speed-btn" onclick="changeAudioSpeed()">1x</button>
+            </div>
+          </div>
+
+          <!-- Workspace Tab Navigation -->
+          <div class="workspace-tabs-header">
+            <div class="tab-nav">
+              <button class="tab-btn active" data-tab="summary" onclick="switchWorkspaceTab('summary')">📋 AI Summary</button>
+              <button class="tab-btn" data-tab="editor" onclick="switchWorkspaceTab('editor')">✍️ Transcript Editor</button>
+              <button class="tab-btn" data-tab="study" onclick="switchWorkspaceTab('study')">🧠 Study & Exam Prep</button>
+              <button class="tab-btn" data-tab="actions" onclick="switchWorkspaceTab('actions')">✅ Action Items</button>
+            </div>
+            <div style="font-size: 0.78rem; color: var(--text-muted);" id="editor-word-count">0 words</div>
+          </div>
+
+          <!-- Tab 1: AI Summary -->
+          <div id="tab-view-summary">
+            <div class="summary-content-box" id="summary-text-box">
+              <!-- Rendered Markdown Summary -->
+            </div>
+          </div>
+
+          <!-- Tab 2: Inbuilt Live Transcript Editor -->
+          <div id="tab-view-editor" style="display: none;">
+            <div class="editor-toolbar">
+              <div class="editor-tools-group">
+                <button class="tool-btn" onclick="saveTranscriptChanges()">💾 Save Changes</button>
+                <button class="tool-btn" onclick="navigator.clipboard.writeText(document.getElementById('transcript-editor').value); showToast('Transcript copied to clipboard!', 'success');">📋 Copy</button>
+              </div>
+              <span style="font-size: 0.75rem; color: var(--text-muted);">Encrypted in SQLite on Save</span>
+            </div>
+            <textarea id="transcript-editor" class="transcript-textarea" placeholder="Raw transcribed text appears here. You can manually edit or refine any word..."></textarea>
+          </div>
+
+          <!-- Tab 3: Study Guide & Exam Prep -->
+          <div id="tab-view-study" style="display: none;">
+            <div class="summary-content-box" id="study-guide-box">
+              <!-- High-yield QA and flashcards -->
+            </div>
+          </div>
+
+          <!-- Tab 4: Action Items & Tasks -->
+          <div id="tab-view-actions" style="display: none;">
+            <div class="summary-content-box" id="actions-list-box">
+              <!-- Tasks and deadlines checklist -->
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Right Column: Gemma AI Copilot (NotebookLM Style) -->
+      <aside class="chat-panel">
+        <div class="chat-header">
+          <div class="chat-copilot-title">
+            <span>✨</span>
+            <span>Gemma Copilot</span>
+          </div>
+          <span style="font-size: 0.7rem; color: #3fb950; background: rgba(35, 134, 54, 0.15); padding: 2px 6px; border-radius: 4px;">Local CPU</span>
+        </div>
+
+        <div class="chat-messages-container" id="chat-messages">
+          <!-- Chat messages stream -->
+        </div>
+
+        <!-- Quick Prompts Chips -->
+        <div class="quick-prompt-chips">
+          <button class="chip-btn" onclick="sendQuickPrompt('Generate 5 exam questions with answers based on this audio')">❓ 5 Exam Questions</button>
+          <button class="chip-btn" onclick="sendQuickPrompt('Extract all action items, tasks, and deadlines')">✅ Tasks & Deadlines</button>
+          <button class="chip-btn" onclick="sendQuickPrompt('Explain complex terms and ideas in simple words')">🔍 Explain Concepts</button>
+          <button class="chip-btn" onclick="sendQuickPrompt('Give me a 3-bullet executive TL;DR summary')">📊 3-Bullet TL;DR</button>
+        </div>
+
+        <div class="chat-input-box">
+          <input type="text" id="chat-input" placeholder="Ask anything about the audio..." />
+          <button class="btn-send" onclick="sendChatMessage()" title="Send Question">➔</button>
+        </div>
+      </aside>
+    </main>
+
+    <!-- Modal 1: Upload or Record Audio -->
+    <div class="modal-overlay" id="upload-modal">
+      <div class="modal-dialog">
+        <div class="modal-header">
+          <h3 class="modal-title">🎙️ Create Smart Audio Note</h3>
+          <button class="btn-close-modal" onclick="closeAllModals()">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="dropzone" id="audio-dropzone">
+            <div class="dropzone-icon">📁</div>
+            <p id="dropzone-label" style="font-weight: 600; color: var(--text-primary); margin-bottom: 4px;">
+              Click or Drag & Drop audio file here
+            </p>
+            <p style="font-size: 0.75rem; color: var(--text-secondary);">
+              Processed 100% on CPU (MP3, WAV, M4A, OGG, WEBM, FLAC)
+            </p>
+            <input type="file" id="audio-file-input" accept="audio/*" style="display: none;" />
+          </div>
+
+          <div style="text-align: center; color: var(--text-muted); font-size: 0.8rem; font-weight: 600;">— OR RECORD LIVE VOICE —</div>
+
+          <!-- Live In-Browser Microphone Recorder -->
+          <div style="background: var(--bg-tertiary); border-radius: var(--radius-md); padding: 14px; text-align: center;">
+            <button class="record-pulse-btn" id="mic-record-btn" onclick="toggleLiveRecording()">🎙️</button>
+            <div id="record-timer" style="font-family: 'JetBrains Mono', monospace; font-size: 0.9rem; font-weight: 700; margin-top: 8px; color: var(--text-primary);">00:00</div>
+            <audio id="record-preview-audio" controls style="display: none; width: 100%; margin-top: 10px; height: 32px;"></audio>
+          </div>
+
+          <!-- Category Persona Selector -->
+          <div class="form-group">
+            <label for="upload-category-select">Note Persona / Context:</label>
+            <select id="upload-category-select" class="form-select">
+              <!-- Populated by JS -->
+            </select>
+          </div>
+
+          <!-- Language Selector — All 99 Whisper-supported languages -->
+          <div class="form-group">
+            <label for="upload-language-select">Spoken Language:</label>
+            <select id="upload-language-select" class="form-select">
+              <option value="auto">🌐 Auto-Detect (Multilingual & Mixed Language)</option>
+
+              <optgroup label="── South Asia ──────────────────────">
+                <option value="hi">Hindi — हिंदी</option>
+                <option value="bn">Bengali — বাংলা</option>
+                <option value="ur">Urdu — اردو</option>
+                <option value="pa">Punjabi — ਪੰਜਾਬੀ</option>
+                <option value="gu">Gujarati — ગુજરાતી</option>
+                <option value="mr">Marathi — मराठी</option>
+                <option value="ta">Tamil — தமிழ்</option>
+                <option value="te">Telugu — తెలుగు</option>
+                <option value="kn">Kannada — ಕನ್ನಡ</option>
+                <option value="ml">Malayalam — മലയാളം</option>
+                <option value="si">Sinhala — සිංහල</option>
+                <option value="ne">Nepali — नेपाली</option>
+              </optgroup>
+
+              <optgroup label="── East &amp; Southeast Asia ─────────">
+                <option value="zh">Chinese (Mandarin) — 中文</option>
+                <option value="yue">Cantonese — 粵語</option>
+                <option value="ja">Japanese — 日本語</option>
+                <option value="ko">Korean — 한국어</option>
+                <option value="vi">Vietnamese — Tiếng Việt</option>
+                <option value="th">Thai — ภาษาไทย</option>
+                <option value="id">Indonesian — Bahasa Indonesia</option>
+                <option value="ms">Malay — Bahasa Melayu</option>
+                <option value="tl">Filipino / Tagalog — Filipino</option>
+                <option value="km">Khmer — ភាសាខ្មែរ</option>
+                <option value="lo">Lao — ລາວ</option>
+                <option value="my">Burmese — မြန်မာဘာသာ</option>
+                <option value="jw">Javanese — Basa Jawa</option>
+              </optgroup>
+
+              <optgroup label="── Western Europe ───────────────────">
+                <option value="en">English</option>
+                <option value="fr">French — Français</option>
+                <option value="de">German — Deutsch</option>
+                <option value="es">Spanish — Español</option>
+                <option value="pt">Portuguese — Português</option>
+                <option value="it">Italian — Italiano</option>
+                <option value="nl">Dutch — Nederlands</option>
+                <option value="pl">Polish — Polski</option>
+                <option value="sv">Swedish — Svenska</option>
+                <option value="da">Danish — Dansk</option>
+                <option value="fi">Finnish — Suomi</option>
+                <option value="nb">Norwegian — Norsk</option>
+                <option value="ca">Catalan — Català</option>
+                <option value="gl">Galician — Galego</option>
+                <option value="cy">Welsh — Cymraeg</option>
+                <option value="eu">Basque — Euskara</option>
+                <option value="is">Icelandic — Íslenska</option>
+                <option value="lb">Luxembourgish — Lëtzebuergesch</option>
+                <option value="br">Breton — Brezhoneg</option>
+              </optgroup>
+
+              <optgroup label="── Eastern Europe ───────────────────">
+                <option value="ru">Russian — Русский</option>
+                <option value="uk">Ukrainian — Українська</option>
+                <option value="cs">Czech — Čeština</option>
+                <option value="sk">Slovak — Slovenčina</option>
+                <option value="ro">Romanian — Română</option>
+                <option value="hu">Hungarian — Magyar</option>
+                <option value="hr">Croatian — Hrvatski</option>
+                <option value="sr">Serbian — Српски</option>
+                <option value="bs">Bosnian — Bosanski</option>
+                <option value="sl">Slovenian — Slovenščina</option>
+                <option value="bg">Bulgarian — Български</option>
+                <option value="mk">Macedonian — Македонски</option>
+                <option value="sq">Albanian — Shqip</option>
+                <option value="et">Estonian — Eesti</option>
+                <option value="lv">Latvian — Latviešu</option>
+                <option value="lt">Lithuanian — Lietuvių</option>
+                <option value="be">Belarusian — Беларуская</option>
+              </optgroup>
+
+              <optgroup label="── Middle East &amp; Central Asia ─────">
+                <option value="ar">Arabic — العربية</option>
+                <option value="fa">Persian / Farsi — فارسی</option>
+                <option value="tr">Turkish — Türkçe</option>
+                <option value="he">Hebrew — עברית</option>
+                <option value="az">Azerbaijani — Azərbaycan</option>
+                <option value="kk">Kazakh — Қазақша</option>
+                <option value="uz">Uzbek — O'zbek</option>
+                <option value="ky">Kyrgyz — Кыргызча</option>
+                <option value="tg">Tajik — Тоҷикӣ</option>
+                <option value="tk">Turkmen — Türkmençe</option>
+                <option value="mn">Mongolian — Монгол</option>
+              </optgroup>
+
+              <optgroup label="── Africa ───────────────────────────">
+                <option value="sw">Swahili — Kiswahili</option>
+                <option value="yo">Yoruba — Èdè Yorùbá</option>
+                <option value="ha">Hausa — Harshen Hausa</option>
+                <option value="ig">Igbo — Asụsụ Igbo</option>
+                <option value="am">Amharic — አማርኛ</option>
+                <option value="so">Somali — Soomaali</option>
+                <option value="af">Afrikaans</option>
+                <option value="sn">Shona — ChiShona</option>
+                <option value="ny">Chichewa — Chicheŵa</option>
+                <option value="mg">Malagasy — Malagasy</option>
+              </optgroup>
+
+              <optgroup label="── Other &amp; Regional ──────────────">
+                <option value="el">Greek — Ελληνικά</option>
+                <option value="ka">Georgian — ქართული</option>
+                <option value="hy">Armenian — Հայերեն</option>
+                <option value="la">Latin — Latina</option>
+                <option value="mi">Māori — Te Reo Māori</option>
+                <option value="haw">Hawaiian — ʻŌlelo Hawaiʻi</option>
+                <option value="fo">Faroese — Føroyskt</option>
+                <option value="oc">Occitan — Occitan</option>
+                <option value="sa">Sanskrit — संस्कृतम्</option>
+                <option value="tt">Tatar — Татар теле</option>
+                <option value="ba">Bashkir — Башҡортса</option>
+                <option value="ht">Haitian Creole — Kreyòl Ayisyen</option>
+                <option value="ln">Lingala — Lingála</option>
+                <option value="ps">Pashto — پښتو</option>
+              </optgroup>
+            </select>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-secondary" onclick="closeAllModals()">Cancel</button>
+          <button class="btn-primary" onclick="handleAudioUpload()">Transcribe & Summarize</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal 2: Re-generate AI Summary Persona -->
+    <div class="modal-overlay" id="regenerate-modal">
+      <div class="modal-dialog">
+        <div class="modal-header">
+          <h3 class="modal-title">🔄 Re-Analyze with Gemma (CPU)</h3>
+          <button class="btn-close-modal" onclick="closeAllModals()">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label for="regen-category-select">Select New Persona:</label>
+            <select id="regen-category-select" class="form-select">
+              <!-- Populated by JS -->
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="regen-instructions-input">Custom Prompt / Focus (Optional):</label>
+            <textarea id="regen-instructions-input" class="form-input" rows="3" placeholder="e.g. Focus on formulas, exam preparation, and homework deadlines..."></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-secondary" onclick="closeAllModals()">Cancel</button>
+          <button class="btn-primary" onclick="handleRegenerateSummary()">Generate New Summary</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal 3: Settings & Local Privacy -->
+    <div class="modal-overlay" id="settings-modal">
+      <div class="modal-dialog">
+        <div class="modal-header">
+          <h3 class="modal-title">⚙️ Local CPU & Security Settings</h3>
+          <button class="btn-close-modal" onclick="closeAllModals()">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div style="background: rgba(35, 134, 54, 0.12); border: 1px solid rgba(35, 134, 54, 0.3); border-radius: var(--radius-md); padding: 12px; font-size: 0.85rem; color: #3fb950; line-height: 1.4;">
+            🖥️ <strong>100% Local CPU Mode:</strong> Everything runs entirely on your machine. No cloud API keys or external services are needed.
+          </div>
+
+          <div class="form-group">
+            <label for="settings-enc-key">Master SQLite Encryption Secret (AES-256):</label>
+            <input type="password" id="settings-enc-key" class="form-input" placeholder="Custom passphrase or leave blank for default" />
+            <span style="font-size: 0.72rem; color: var(--text-muted);">All transcripts, summaries, and chat histories are AES-encrypted inside notes.db</span>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-secondary" onclick="closeAllModals()">Cancel</button>
+          <button class="btn-primary" onclick="saveSettings()">Save Settings</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal 4: Export Note -->
+    <div class="modal-overlay" id="export-modal">
+      <div class="modal-dialog" style="max-width: 440px;">
+        <div class="modal-header">
+          <h3 class="modal-title">📥 Export Audio Note</h3>
+          <button class="btn-close-modal" onclick="closeAllModals()">&times;</button>
+        </div>
+        <div class="modal-body" style="gap: 10px;">
+          <button class="btn-secondary" style="width: 100%; text-align: left; padding: 12px 16px;" onclick="triggerExport('md')">
+            📄 <strong>Markdown Document (.md)</strong><br>
+            <span style="font-size: 0.75rem; color: var(--text-muted);">Formatted with headers, summary, transcript, and Q&A</span>
+          </button>
+          <button class="btn-secondary" style="width: 100%; text-align: left; padding: 12px 16px;" onclick="triggerExport('txt')">
+            📝 <strong>Plain Text (.txt)</strong><br>
+            <span style="font-size: 0.75rem; color: var(--text-muted);">Standard plain text export</span>
+          </button>
+          <button class="btn-secondary" style="width: 100%; text-align: left; padding: 12px 16px;" onclick="triggerExport('json')">
+            💾 <strong>Raw JSON (.json)</strong><br>
+            <span style="font-size: 0.75rem; color: var(--text-muted);">Full structured note object</span>
+          </button>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-secondary" onclick="closeAllModals()">Close</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Toast Notifications Container -->
+    <div id="toast-container"></div>
+  </div>
+
+  <script src="/static/js/app.js"></script>
+</body>
+</html>

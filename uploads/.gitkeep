@@ -1,0 +1,3 @@
+# Keep this file — it preserves the uploads/ directory in Git.
+# Audio files uploaded by users are ignored via .gitignore.
+# The folder will be created automatically on first run.
