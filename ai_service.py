@@ -187,10 +187,14 @@ def get_whisper_model(model_size: str = "base"):
     if _WHISPER_MODEL is None:
         try:
             from faster_whisper import WhisperModel
-            device  = HW["whisper_device"]
-            compute = HW["whisper_compute"]
-            print(f"[Whisper] Loading '{model_size}' on {device.upper()} ({compute}) "
-                  f"threads={CPU_THREADS}...")
+        except ImportError:
+            print("[Whisper] ⚠️ faster-whisper is NOT installed. Run 'python install.py' on the server.")
+            return None
+
+        device  = HW["whisper_device"]
+        compute = HW["whisper_compute"]
+        print(f"[Whisper] Loading '{model_size}' on {device.upper()} ({compute}) threads={CPU_THREADS}...")
+        try:
             _WHISPER_MODEL = WhisperModel(
                 model_size,
                 device=device,
@@ -199,8 +203,18 @@ def get_whisper_model(model_size: str = "base"):
             )
             print(f"[Whisper] ✅ Loaded successfully on {device.upper()}!")
         except Exception as e:
-            print(f"[Whisper] ⚠️  Could not load: {e}")
-            return None
+            print(f"[Whisper] ⚠️ Could not load on {device} ({e}). Retrying on CPU (int8)...")
+            try:
+                _WHISPER_MODEL = WhisperModel(
+                    model_size,
+                    device="cpu",
+                    compute_type="int8",
+                    cpu_threads=CPU_THREADS,
+                )
+                print(f"[Whisper] ✅ Loaded successfully on CPU fallback!")
+            except Exception as e2:
+                print(f"[Whisper] ⚠️ Could not load on CPU fallback either: {e2}")
+                return None
     return _WHISPER_MODEL
 
 
@@ -275,28 +289,42 @@ async def transcribe_audio_file(
     with open(temp_path, "wb") as f:
         f.write(file_bytes)
 
+    error_detail = ""
     try:
         model = get_whisper_model(WHISPER_MODEL_SIZE)
         if model is not None:
             t0         = time.time()
             lang_param = None if (not language or language == "auto") else language
-            segments, info = model.transcribe(temp_path, vad_filter=True, language=lang_param)
 
-            lines    = [s.text.strip() for s in segments]
+            # First attempt: with VAD filtering (cleans up silences)
+            try:
+                segments, info = model.transcribe(temp_path, vad_filter=True, language=lang_param)
+                lines = [s.text.strip() for s in segments]
+            except Exception as vad_err:
+                print(f"[Whisper] VAD filter attempt failed ({vad_err}), retrying without VAD...")
+                segments, info = model.transcribe(temp_path, vad_filter=False, language=lang_param)
+                lines = [s.text.strip() for s in segments]
+
             transcript = " ".join(lines).strip()
             elapsed  = round(time.time() - t0, 1)
-            detected_lang = info.language if hasattr(info, "language") else (language or "auto")
-            duration = round(info.duration) if hasattr(info, "duration") else 0
+            detected_lang = getattr(info, "language", language or "auto")
+            duration = round(getattr(info, "duration", 0))
             backend_label = HW["backend"].upper()
 
-            return {
-                "success":    True,
-                "transcript": transcript,
-                "language":   detected_lang,
-                "duration":   duration,
-                "provider":   f"Whisper {WHISPER_MODEL_SIZE} on {backend_label} ({HW['whisper_compute']}) · {elapsed}s"
-            }
+            if transcript:
+                return {
+                    "success":    True,
+                    "transcript": transcript,
+                    "language":   detected_lang,
+                    "duration":   duration,
+                    "provider":   f"Whisper {WHISPER_MODEL_SIZE} on {backend_label} ({HW['whisper_compute']}) · {elapsed}s"
+                }
+            else:
+                error_detail = "Whisper processed the file but detected no clear spoken words."
+        else:
+            error_detail = "faster-whisper is not installed or could not be loaded."
     except Exception as e:
+        error_detail = f"Transcription failed ({e})."
         print(f"[Whisper Transcribe Error]: {e}")
     finally:
         if os.path.exists(temp_path):
@@ -307,8 +335,7 @@ async def transcribe_audio_file(
 
     return {
         "success":    False,
-        "transcript": "[Audio file uploaded & encrypted. If faster-whisper is still installing, "
-                      "paste or type the transcript directly into the editor.]",
+        "transcript": f"[Audio file uploaded & saved. {error_detail} Run 'python install.py' on the server, then click '🎙️ Transcribe Audio' to extract the text, or type/edit it manually.]",
         "language":   language or "auto",
         "duration":   0,
         "provider":   "Manual Mode"

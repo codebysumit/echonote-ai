@@ -110,6 +110,7 @@
               <input type="text" id="note-title-input" class="editable-title-input" value="Untitled Audio Note" />
               <div class="note-actions-bar">
                 <span class="note-badge-tag" id="note-category-badge" style="background: rgba(99, 102, 241, 0.15); color: #818cf8; border: 1px solid rgba(99, 102, 241, 0.3);">Category</span>
+                <button class="tool-btn" id="note-retranscribe-btn" onclick="retranscribeCurrentNote()" title="Extract or re-extract text from audio with faster-whisper">🎙️ Transcribe</button>
                 <button class="tool-btn" onclick="saveTranscriptChanges()" title="Save changes">💾 Save</button>
                 <button class="tool-btn" onclick="openRegenerateModal()" title="Re-summarize">🔄 Re-AI</button>
                 <button class="tool-btn" onclick="deleteActiveNote()" title="Delete note" style="color: var(--danger);">🗑️</button>
@@ -143,8 +144,10 @@
 
           <!-- Tab 2: Inbuilt Live Transcript Editor -->
           <div id="tab-view-editor" style="display: none;">
+            <div id="transcript-notice-banner" style="display: none; padding: 10px 14px; margin-bottom: 12px; border-radius: 8px; font-size: 0.84rem; background: rgba(234, 179, 8, 0.15); border: 1px solid rgba(234, 179, 8, 0.3); color: #fde047;"></div>
             <div class="editor-toolbar">
               <div class="editor-tools-group">
+                <button class="tool-btn" id="editor-retranscribe-btn" onclick="retranscribeCurrentNote()" title="Transcribe audio with faster-whisper">🎙️ Transcribe Audio</button>
                 <button class="tool-btn" onclick="saveTranscriptChanges()">💾 Save Changes</button>
                 <button class="tool-btn" onclick="navigator.clipboard.writeText(document.getElementById('transcript-editor').value); showToast('Transcript copied to clipboard!', 'success');">📋 Copy</button>
               </div>

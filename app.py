@@ -265,6 +265,68 @@ async def regenerate_summary(
     )
     return {"success": True, "note": updated}
 
+@app.post("/api/notes/{note_id}/retranscribe")
+async def retranscribe_audio_note(
+    note_id: str,
+    language: Optional[str] = Query("auto"),
+    x_encryption_key: Optional[str] = Header(None)
+):
+    """
+    Re-transcribes the uploaded audio file for an existing note using faster-whisper.
+    Useful if faster-whisper was just installed or if the user wants to re-process with
+    a different language setting.
+    """
+    note = database.get_note_by_id(note_id, custom_key=x_encryption_key)
+    if not note:
+        raise HTTPException(status_code=404, detail="Note not found")
+
+    audio_filename = note.get("audio_filename")
+    if not audio_filename:
+        raise HTTPException(status_code=400, detail="This note does not have an attached audio file.")
+
+    audio_path = os.path.join(UPLOAD_DIR, audio_filename)
+    if not os.path.exists(audio_path):
+        raise HTTPException(status_code=404, detail=f"Audio file '{audio_filename}' not found on server disk.")
+
+    with open(audio_path, "rb") as f:
+        audio_bytes = f.read()
+
+    transcription_result = await ai_service.transcribe_audio_file(
+        file_bytes=audio_bytes,
+        filename=audio_filename,
+        language=language if language != "auto" else None
+    )
+
+    if not transcription_result.get("success"):
+        raise HTTPException(
+            status_code=500,
+            detail=transcription_result.get("transcript", "Transcription failed. Make sure faster-whisper is installed on your server.")
+        )
+
+    new_transcript = transcription_result["transcript"]
+
+    md_summary, struct_data, detected_category = await ai_service.generate_enhanced_summary(
+        transcript=new_transcript,
+        category=note.get("category", "general"),
+        custom_instructions=""
+    )
+
+    updated = database.update_note_transcript_summary(
+        note_id=note_id,
+        title=struct_data.get("title") or note.get("title"),
+        category=detected_category or note.get("category"),
+        transcript=new_transcript,
+        summary=md_summary,
+        structured_data=struct_data,
+        custom_key=x_encryption_key
+    )
+
+    return {
+        "success": True,
+        "note": updated,
+        "transcription_provider": transcription_result.get("provider", "faster-whisper")
+    }
+
 @app.post("/api/notes/{note_id}/chat")
 async def chat_with_note(
     note_id: str,

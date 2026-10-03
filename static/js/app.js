@@ -302,6 +302,25 @@ function renderWorkspace() {
     audioContainer.style.display = "none";
   }
 
+  const hasAudio = !!state.activeNote.audio_filename;
+  const noteTranscribeBtn = document.getElementById("note-retranscribe-btn");
+  const editorTranscribeBtn = document.getElementById("editor-retranscribe-btn");
+  if (noteTranscribeBtn) noteTranscribeBtn.style.display = hasAudio ? "inline-flex" : "none";
+  if (editorTranscribeBtn) editorTranscribeBtn.style.display = hasAudio ? "inline-flex" : "none";
+
+  const noticeBanner = document.getElementById("transcript-notice-banner");
+  if (noticeBanner) {
+    const rawTranscript = state.activeNote.transcript || "";
+    if (rawTranscript.includes("[Audio file uploaded")) {
+      noticeBanner.style.display = "block";
+      noticeBanner.innerHTML = `⚠️ <strong>Audio Waiting for Transcription:</strong> When this audio was uploaded, faster-whisper was not installed yet on the server.<br>
+      • To extract the audio text automatically, click <strong>🎙️ Transcribe Audio</strong>.<br>
+      • Or simply select and delete this text, type or paste your own transcript, then click <strong>💾 Save Changes</strong>.`;
+    } else {
+      noticeBanner.style.display = "none";
+    }
+  }
+
   const transcriptEditor = document.getElementById("transcript-editor");
   if (transcriptEditor) {
     transcriptEditor.value = state.activeNote.transcript || "";
@@ -431,6 +450,44 @@ async function saveTranscriptChanges() {
     }
   } catch (err) {
     showToast("Error saving changes", "error");
+  }
+}
+
+async function retranscribeCurrentNote() {
+  if (!state.activeNoteId) return;
+  if (!state.activeNote || !state.activeNote.audio_filename) {
+    showToast("This note does not have an attached audio file.", "info");
+    return;
+  }
+
+  const btn1 = document.getElementById("note-retranscribe-btn");
+  const btn2 = document.getElementById("editor-retranscribe-btn");
+  if (btn1) { btn1.disabled = true; btn1.textContent = "⏳ Transcribing..."; }
+  if (btn2) { btn2.disabled = true; btn2.textContent = "⏳ Transcribing..."; }
+
+  showToast("🎙️ Extracting speech with faster-whisper...", "info");
+
+  try {
+    const res = await fetch(`/api/notes/${state.activeNoteId}/retranscribe`, {
+      method: "POST",
+      headers: getHeaders()
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      state.activeNote = data.note;
+      renderWorkspace();
+      showToast("Speech extracted & note updated successfully! 🎉", "success");
+      loadNotesList();
+    } else {
+      const err = await res.json().catch(() => ({ detail: "Transcription failed" }));
+      showToast(err.detail || "Transcription failed. Ensure faster-whisper is installed on server.", "error");
+    }
+  } catch (err) {
+    showToast("Network error during transcription", "error");
+  } finally {
+    if (btn1) { btn1.disabled = false; btn1.textContent = "🎙️ Transcribe"; }
+    if (btn2) { btn2.disabled = false; btn2.textContent = "🎙️ Transcribe Audio"; }
   }
 }
 
