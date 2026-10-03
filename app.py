@@ -1,7 +1,7 @@
 """
-Smart Audio Notes - 100% Local CPU Studio Server (FastAPI)
-Runs locally on laptop CPU without any GPU and without any API keys.
-Encrypted SQLite storage with full in-browser editor and Gemma intelligence.
+EchoNote AI — Local Inference Studio Server (FastAPI)
+Auto-detects GPU (NVIDIA CUDA / Apple MPS) and falls back to CPU.
+Encrypted SQLite storage with full in-browser editor and Gemma AI intelligence.
 """
 
 import os
@@ -16,7 +16,7 @@ from pydantic import BaseModel
 import database
 import ai_service
 
-app = FastAPI(title="Smart Audio Notes - Local CPU Studio", version="2.0.0")
+app = FastAPI(title="EchoNote AI — Local Intelligence Studio", version="2.1.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -107,6 +107,15 @@ async def serve_index():
         with open(index_file, "r", encoding="utf-8") as f:
             return HTMLResponse(content=f.read())
     return HTMLResponse("<h1>Smart Audio Notes (Local CPU)</h1>")
+
+@app.get("/api/hardware")
+def get_hardware_info():
+    """
+    Returns current hardware detection results.
+    Used by the frontend to display the GPU/CPU status badge.
+    """
+    return JSONResponse(content=ai_service.get_hardware_status())
+
 
 @app.get("/api/categories")
 async def get_categories():

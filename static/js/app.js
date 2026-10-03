@@ -28,13 +28,41 @@ const state = {
 // DOM Ready initialization
 document.addEventListener("DOMContentLoaded", async () => {
   setupTheme();
+  fetchHardwareBadge();
   await loadCategories();
   await loadNotesList();
   setupEventListeners();
   loadSavedSettingsIntoForm();
 });
 
-// Theme Management
+// ─── Hardware Badge ───────────────────────────────────────────────────────────
+
+/**
+ * Fetches /api/hardware and updates the header badge with the real backend.
+ * Color: 🟢 CUDA (green) | 🍎 MPS (purple) | 🖥️ CPU (grey)
+ */
+async function fetchHardwareBadge() {
+  const badge = document.getElementById("hw-badge");
+  if (!badge) return;
+  try {
+    const res  = await fetch("/api/hardware");
+    const hw   = await res.json();
+    const icon = { cuda: "🚀", mps: "🍎", cpu: "🖥️" }[hw.backend] || "🖥️";
+    const color = { cuda: "#3fb950", mps: "#a78bfa", cpu: "var(--text-muted)" }[hw.backend] || "var(--text-muted)";
+    const label = hw.backend === "cuda"
+      ? `${icon} GPU: ${hw.gpu_name} (${hw.vram_gb} GB) · CUDA`
+      : hw.backend === "mps"
+        ? `${icon} Apple Silicon GPU · float16`
+        : `${icon} CPU · int8 · ${hw.cpu_threads} threads`;
+    badge.textContent  = label;
+    badge.style.color  = color;
+    badge.style.borderColor = color;
+    badge.title = hw.summary;
+  } catch (_) {
+    if (badge) badge.textContent = "🖥️ Local Mode";
+  }
+}
+
 function setupTheme() {
   const savedTheme = localStorage.getItem("SAN_THEME") || "dark";
   document.documentElement.setAttribute("data-theme", savedTheme);

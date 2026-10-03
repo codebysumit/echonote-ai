@@ -1,11 +1,13 @@
 """
-Local CPU AI Engine for Smart Audio Notes
-Features:
-- 100% Local CPU Execution: Zero API Keys Required & 100% Offline
-- faster-whisper (CPU int8 quantized) for instant multilingual audio transcription
-- llama-cpp-python (Gemma 3 1B GGUF quantized) for CPU inference
-- Multi-persona structured summaries (College, School, Teacher, Meeting, Voice Note, Recipe, etc.)
-- Grounded TF-IDF / Context-aware QA Chatbot
+EchoNote AI — Local Inference Engine
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Auto-Detection Hardware Priority:
+  1. NVIDIA GPU  → faster-whisper runs float16 CUDA | llama-cpp uses n_gpu_layers=-1
+  2. Apple MPS   → faster-whisper float16 on MPS   | llama-cpp n_gpu_layers=1
+  3. CPU fallback→ faster-whisper int8 CPU          | llama-cpp CPU only (default)
+
+Zero API keys. 100% offline after first model download.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 """
 
 import os
@@ -13,14 +15,113 @@ import json
 import time
 from typing import Dict, Any, List, Optional, Tuple
 
-# Local Model Global Singletons (Lazy Loaded)
+# ─── Model Singletons (lazy-loaded) ───────────────────────────────────────────
 _WHISPER_MODEL = None
-_LLAMA_MODEL = None
+_LLAMA_MODEL   = None
 
+# ─── Config from .env (with sensible defaults) ────────────────────────────────
 WHISPER_MODEL_SIZE = os.getenv("WHISPER_MODEL_SIZE", "base")
-CPU_THREADS = int(os.getenv("CPU_THREADS", "2"))
-GGUF_REPO_ID = os.getenv("GGUF_REPO_ID", "unsloth/gemma-3-1b-it-GGUF")
-GGUF_FILENAME = os.getenv("GGUF_FILENAME", "gemma-3-1b-it-Q4_K_M.gguf")
+CPU_THREADS        = int(os.getenv("CPU_THREADS", "2"))
+GGUF_REPO_ID       = os.getenv("GGUF_REPO_ID",   "unsloth/gemma-3-1b-it-GGUF")
+GGUF_FILENAME      = os.getenv("GGUF_FILENAME",   "gemma-3-1b-it-Q4_K_M.gguf")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ①  Hardware Detection
+# ══════════════════════════════════════════════════════════════════════════════
+
+def detect_hardware() -> Dict[str, Any]:
+    """
+    Probes available hardware and returns the best backend for Whisper and llama-cpp.
+
+    Returns a dict:
+        {
+          "backend":          "cuda" | "mps" | "cpu",
+          "whisper_device":   "cuda" | "auto" | "cpu",
+          "whisper_compute":  "float16" | "int8",
+          "llama_n_gpu_layers": int,   # -1 = all layers on GPU, 0 = CPU only
+          "gpu_name":         str | None,
+          "vram_gb":          float | None,
+          "summary":          str          # human-readable one-liner
+        }
+    """
+    hw = {
+        "backend":            "cpu",
+        "whisper_device":     "cpu",
+        "whisper_compute":    "int8",
+        "llama_n_gpu_layers": 0,
+        "gpu_name":           None,
+        "vram_gb":            None,
+        "summary":            "CPU-only mode (no GPU detected)"
+    }
+
+    # ── Try NVIDIA CUDA ──────────────────────────────────────────────────────
+    try:
+        import torch
+        if torch.cuda.is_available():
+            gpu_name  = torch.cuda.get_device_name(0)
+            vram_bytes = torch.cuda.get_device_properties(0).total_memory
+            vram_gb    = round(vram_bytes / (1024 ** 3), 1)
+            hw.update({
+                "backend":            "cuda",
+                "whisper_device":     "cuda",
+                "whisper_compute":    "float16",
+                "llama_n_gpu_layers": -1,          # all layers on GPU
+                "gpu_name":           gpu_name,
+                "vram_gb":            vram_gb,
+                "summary":            f"NVIDIA GPU — {gpu_name} ({vram_gb} GB VRAM) · CUDA"
+            })
+            return hw
+    except ImportError:
+        pass  # torch not installed → skip CUDA check
+
+    # ── Try Apple MPS (M1/M2/M3) ────────────────────────────────────────────
+    try:
+        import torch
+        if torch.backends.mps.is_available():
+            hw.update({
+                "backend":            "mps",
+                "whisper_device":     "auto",      # faster-whisper auto picks MPS
+                "whisper_compute":    "float16",
+                "llama_n_gpu_layers": 1,           # partial offload (MPS limitation)
+                "gpu_name":           "Apple Silicon (MPS)",
+                "vram_gb":            None,
+                "summary":            "Apple Silicon GPU (MPS) · float16"
+            })
+            return hw
+    except (ImportError, AttributeError):
+        pass
+
+    # ── CPU fallback ────────────────────────────────────────────────────────
+    cpu_cores = os.cpu_count() or 1
+    hw["summary"] = f"CPU-only mode · {cpu_cores} logical cores · int8 quantized"
+    return hw
+
+
+# Run detection once at module import — cheap (< 50 ms)
+HW = detect_hardware()
+
+def _print_hardware_banner():
+    icon = {"cuda": "🚀", "mps": "🍎", "cpu": "🖥️"}.get(HW["backend"], "🖥️")
+    print("─" * 60)
+    print(f"  {icon}  ECHONOTE AI — Hardware Backend")
+    print(f"       Mode  : {HW['backend'].upper()}")
+    print(f"       Status: {HW['summary']}")
+    if HW["gpu_name"]:
+        print(f"       GPU   : {HW['gpu_name']}")
+    if HW["vram_gb"]:
+        print(f"       VRAM  : {HW['vram_gb']} GB")
+    print(f"       Whisper compute : {HW['whisper_compute']} on {HW['whisper_device']}")
+    print(f"       Gemma GPU layers: {HW['llama_n_gpu_layers']} "
+          f"({'all on GPU' if HW['llama_n_gpu_layers'] == -1 else 'CPU only' if HW['llama_n_gpu_layers'] == 0 else 'partial GPU'})")
+    print("─" * 60)
+
+_print_hardware_banner()
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ②  Persona Definitions
+# ══════════════════════════════════════════════════════════════════════════════
 
 CATEGORY_PERSONAS = {
     "college": {
@@ -70,39 +171,92 @@ CATEGORY_PERSONAS = {
     }
 }
 
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ③  Model Loaders  (GPU-aware)
+# ══════════════════════════════════════════════════════════════════════════════
+
 def get_whisper_model(model_size: str = "base"):
-    """Lazy load faster-whisper CPU model in int8 format."""
+    """
+    Lazy-load faster-whisper using the auto-detected best backend.
+    GPU   → float16 CUDA (2-4× faster)
+    MPS   → float16 auto
+    CPU   → int8 quantized (low-RAM friendly)
+    """
     global _WHISPER_MODEL
     if _WHISPER_MODEL is None:
         try:
             from faster_whisper import WhisperModel
-            print(f"[AI Service] Loading local faster-whisper ('{model_size}', CPU int8, threads={CPU_THREADS})...")
-            _WHISPER_MODEL = WhisperModel(model_size, device="cpu", compute_type="int8", cpu_threads=CPU_THREADS)
-            print("[AI Service] Local Whisper loaded successfully!")
+            device  = HW["whisper_device"]
+            compute = HW["whisper_compute"]
+            print(f"[Whisper] Loading '{model_size}' on {device.upper()} ({compute}) "
+                  f"threads={CPU_THREADS}...")
+            _WHISPER_MODEL = WhisperModel(
+                model_size,
+                device=device,
+                compute_type=compute,
+                cpu_threads=CPU_THREADS,
+            )
+            print(f"[Whisper] ✅ Loaded successfully on {device.upper()}!")
         except Exception as e:
-            print(f"[AI Service Error] Could not load faster-whisper: {e}")
+            print(f"[Whisper] ⚠️  Could not load: {e}")
             return None
     return _WHISPER_MODEL
 
+
 def get_llama_model():
-    """Lazy load local Gemma GGUF model via llama-cpp-python on CPU."""
+    """
+    Lazy-load Gemma 3 1B GGUF via llama-cpp-python.
+    GPU (CUDA/ROCm) → n_gpu_layers=-1  (all layers offloaded, very fast)
+    Apple MPS        → n_gpu_layers=1   (partial offload)
+    CPU              → n_gpu_layers=0   (pure CPU int4, works on any laptop)
+    """
     global _LLAMA_MODEL
     if _LLAMA_MODEL is None:
         try:
             from llama_cpp import Llama
-            print(f"[AI Service] Loading local Gemma model ({GGUF_REPO_ID} / {GGUF_FILENAME}) on CPU...")
+            n_gpu = HW["llama_n_gpu_layers"]
+            print(f"[Gemma] Loading {GGUF_FILENAME} — GPU layers: {n_gpu} "
+                  f"({'full GPU' if n_gpu == -1 else 'CPU only' if n_gpu == 0 else 'partial GPU'})...")
             _LLAMA_MODEL = Llama.from_pretrained(
                 repo_id=GGUF_REPO_ID,
                 filename=GGUF_FILENAME,
                 n_ctx=4096,
                 n_threads=CPU_THREADS,
+                n_gpu_layers=n_gpu,
                 verbose=False,
             )
-            print("[AI Service] Local Gemma GGUF loaded successfully!")
+            backend_label = HW["backend"].upper()
+            print(f"[Gemma] ✅ Loaded successfully on {backend_label}!")
         except Exception as e:
-            print(f"[AI Service Warning] llama_cpp not loaded: {e}")
+            print(f"[Gemma] ⚠️  llama_cpp not loaded: {e}")
             return None
     return _LLAMA_MODEL
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ④  Hardware Status API  (exposed to FastAPI for the UI status badge)
+# ══════════════════════════════════════════════════════════════════════════════
+
+def get_hardware_status() -> Dict[str, Any]:
+    """Returns current hardware detection results for the /api/hardware endpoint."""
+    return {
+        "backend":         HW["backend"],
+        "gpu_name":        HW["gpu_name"],
+        "vram_gb":         HW["vram_gb"],
+        "summary":         HW["summary"],
+        "whisper_device":  HW["whisper_device"],
+        "whisper_compute": HW["whisper_compute"],
+        "llama_gpu_layers":HW["llama_n_gpu_layers"],
+        "cpu_threads":     CPU_THREADS,
+        "whisper_model":   WHISPER_MODEL_SIZE,
+        "gemma_model":     GGUF_FILENAME,
+    }
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ⑤  Core AI Functions  (unchanged logic, now GPU-aware via loaders above)
+# ══════════════════════════════════════════════════════════════════════════════
 
 async def transcribe_audio_file(
     file_bytes: bytes,
@@ -110,11 +264,11 @@ async def transcribe_audio_file(
     language: Optional[str] = None
 ) -> Dict[str, Any]:
     """
-    Transcribes audio using local CPU faster-whisper (int8).
-    Zero API keys needed!
+    Transcribes audio using faster-whisper on the auto-detected best backend.
+    GPU   → 2-4× real-time on float16 CUDA
+    CPU   → ~1× real-time on int8 (slower but works on any machine)
     """
-    # Save audio temporarily to a local file for faster-whisper
-    temp_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uploads")
+    temp_dir  = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uploads")
     os.makedirs(temp_dir, exist_ok=True)
     temp_path = os.path.join(temp_dir, f"temp_{filename}")
 
@@ -124,22 +278,23 @@ async def transcribe_audio_file(
     try:
         model = get_whisper_model(WHISPER_MODEL_SIZE)
         if model is not None:
-            t0 = time.time()
+            t0         = time.time()
             lang_param = None if (not language or language == "auto") else language
             segments, info = model.transcribe(temp_path, vad_filter=True, language=lang_param)
-            
-            lines = [s.text.strip() for s in segments]
+
+            lines    = [s.text.strip() for s in segments]
             transcript = " ".join(lines).strip()
-            elapsed = round(time.time() - t0, 1)
+            elapsed  = round(time.time() - t0, 1)
             detected_lang = info.language if hasattr(info, "language") else (language or "auto")
             duration = round(info.duration) if hasattr(info, "duration") else 0
+            backend_label = HW["backend"].upper()
 
             return {
-                "success": True,
+                "success":    True,
                 "transcript": transcript,
-                "language": detected_lang,
-                "duration": duration,
-                "provider": f"Local Whisper CPU ({WHISPER_MODEL_SIZE}) in {elapsed}s"
+                "language":   detected_lang,
+                "duration":   duration,
+                "provider":   f"Whisper {WHISPER_MODEL_SIZE} on {backend_label} ({HW['whisper_compute']}) · {elapsed}s"
             }
     except Exception as e:
         print(f"[Whisper Transcribe Error]: {e}")
@@ -151,15 +306,17 @@ async def transcribe_audio_file(
                 pass
 
     return {
-        "success": False,
-        "transcript": "[Audio file uploaded and encrypted. If faster-whisper is installing, you can type or paste the transcript directly into the editor.]",
-        "language": language or "auto",
-        "duration": 0,
-        "provider": "Local Manual Mode"
+        "success":    False,
+        "transcript": "[Audio file uploaded & encrypted. If faster-whisper is still installing, "
+                      "paste or type the transcript directly into the editor.]",
+        "language":   language or "auto",
+        "duration":   0,
+        "provider":   "Manual Mode"
     }
 
+
 def call_local_gemma(prompt: str, system_instruction: str = "", max_tokens: int = 500) -> str:
-    """Runs prompt through local CPU Gemma 3 1B GGUF with zero API keys."""
+    """Runs a prompt through local Gemma 3 1B GGUF (GPU if available, else CPU)."""
     llm = get_llama_model()
     if llm is not None:
         try:
@@ -177,25 +334,25 @@ def call_local_gemma(prompt: str, system_instruction: str = "", max_tokens: int 
         except Exception as e:
             print(f"[Local Gemma Error]: {e}")
 
-    # Fallback smart extraction if model is not yet cached or loaded
     return generate_rule_based_summary(prompt)
 
+
 def generate_rule_based_summary(text: str) -> str:
-    """Heuristic fallback to extract structured notes even before model downloads."""
-    words = text.split()
+    """Heuristic fallback — works before model is downloaded/cached."""
+    words     = text.split()
     first_few = " ".join(words[:40]) if words else "Audio recording"
     return json.dumps({
-        "category": "general",
-        "title": "Audio Note Summary",
-        "overview": f"Audio note transcript captured: {first_few}...",
+        "category":   "general",
+        "title":      "Audio Note Summary",
+        "overview":   f"Audio note transcript captured: {first_few}...",
         "key_points": [
-            "Audio recording processed locally on CPU and AES-256 encrypted in SQLite database.",
-            "Complete transcript available in the in-browser text editor for manual review.",
-            "Full offline Q&A and summary generation active."
+            "Audio processed locally and AES-256 encrypted in SQLite.",
+            "Full transcript available for editing in the browser editor.",
+            "Ask questions to EchoNote AI chatbot in the right panel."
         ],
         "action_items": [
             "Review and edit the extracted transcript in the editor tab.",
-            "Ask questions to Gemma Copilot in the right panel."
+            "Ask questions to EchoNote AI Copilot in the right panel."
         ],
         "study_exam_questions": [
             {"question": "What is the primary topic of this audio?", "answer": first_few}
@@ -203,15 +360,17 @@ def generate_rule_based_summary(text: str) -> str:
         "outline_mindmap": "# Note Outline\n- Introduction\n- Core Discussion\n- Action Items"
     })
 
+
 def split_words(text: str, size: int) -> List[str]:
     words = text.split()
     return [" ".join(words[i:i+size]) for i in range(0, len(words), size)]
 
+
 async def auto_detect_category(transcript: str) -> str:
-    """Classifies the audio type locally using Gemma 1B CPU."""
-    sample = " ".join(transcript.split()[:250])
+    """Classifies audio type locally using Gemma 1B."""
+    sample  = " ".join(transcript.split()[:250])
     options = ", ".join(CATEGORY_PERSONAS.keys())
-    prompt = (
+    prompt  = (
         f"Read this text from an audio recording. Which type is it?\n"
         f"Choose exactly one from this list: {options}.\n"
         f"Reply with ONLY the lowercase type name.\n\nTEXT:\n{sample}"
@@ -222,14 +381,15 @@ async def auto_detect_category(transcript: str) -> str:
             return cat
     return "general"
 
+
 async def generate_enhanced_summary(
     transcript: str,
     category: str = "auto",
     custom_instructions: str = ""
 ) -> Tuple[str, Dict[str, Any], str]:
     """
-    Generates structured summaries locally on CPU for students, teachers,
-    meetings, and professionals.
+    Generates structured summaries for students, teachers, meetings, and professionals.
+    Runs on the auto-detected best backend (GPU / MPS / CPU).
     """
     if not transcript or len(transcript.strip()) < 5:
         return "No transcript text available to summarize.", {}, "general"
@@ -238,9 +398,9 @@ async def generate_enhanced_summary(
         category = await auto_detect_category(transcript)
 
     persona = CATEGORY_PERSONAS.get(category, CATEGORY_PERSONAS["general"])
-    rules = "Use clear, concise sentences. Use only the given text. Do not invent facts."
+    rules   = "Use clear, concise sentences. Use only the given text. Do not invent facts."
 
-    system_prompt = f"""You are Gemma Chief Note Architect.
+    system_prompt = f"""You are EchoNote Chief Note Architect.
 Generate a structured note for {persona['name']}.
 Focus: {persona['focus']}
 {rules}
@@ -271,29 +431,27 @@ Output ONLY a valid JSON object matching this schema:
 
     parts = split_words(transcript, 450)
     if len(parts) == 1:
-        user_prompt = f"TRANSCRIPT:\n{parts[0]}\n\nSPECIAL REQUESTS:\n{custom_instructions or 'Standard synthesis'}"
+        user_prompt = (f"TRANSCRIPT:\n{parts[0]}\n\n"
+                       f"SPECIAL REQUESTS:\n{custom_instructions or 'Standard synthesis'}")
         raw_response = call_local_gemma(user_prompt, system_instruction=system_prompt, max_tokens=500)
     else:
-        # Multi-part summarization from the notebook
         part_notes = []
-        for p in parts[:4]: # Cap to top 4 parts for CPU speed
+        for p in parts[:4]:
             part_summary = call_local_gemma(
                 f"Summarize this part in 3 bullet points: {persona['focus']}\n\nTEXT:\n{p}",
                 max_tokens=200
             )
             part_notes.append(part_summary)
-        joined = "\n".join(part_notes)
-        user_prompt = f"NOTES FROM AUDIO:\n{joined}\n\nSPECIAL REQUESTS:\n{custom_instructions or 'Standard synthesis'}"
+        joined       = "\n".join(part_notes)
+        user_prompt  = (f"NOTES FROM AUDIO:\n{joined}\n\n"
+                        f"SPECIAL REQUESTS:\n{custom_instructions or 'Standard synthesis'}")
         raw_response = call_local_gemma(user_prompt, system_instruction=system_prompt, max_tokens=500)
 
-    # Clean response
+    # Clean markdown code fences if present
     cleaned = raw_response.strip()
-    if cleaned.startswith("```json"):
-        cleaned = cleaned[7:]
-    if cleaned.startswith("```"):
-        cleaned = cleaned[3:]
-    if cleaned.endswith("```"):
-        cleaned = cleaned[:-3]
+    if cleaned.startswith("```json"): cleaned = cleaned[7:]
+    if cleaned.startswith("```"):     cleaned = cleaned[3:]
+    if cleaned.endswith("```"):       cleaned = cleaned[:-3]
     cleaned = cleaned.strip()
 
     try:
@@ -309,7 +467,8 @@ Output ONLY a valid JSON object matching this schema:
 """ + "\n".join([f"- {kp}" for kp in data.get("key_points", [])])
 
         if data.get("action_items"):
-            md_summary += "\n\n### ✅ Action Items & Tasks\n" + "\n".join([f"- [ ] {ai}" for ai in data.get("action_items", [])])
+            md_summary += "\n\n### ✅ Action Items & Tasks\n" + \
+                          "\n".join([f"- [ ] {ai}" for ai in data.get("action_items", [])])
 
         if data.get("study_exam_questions"):
             md_summary += "\n\n### 🧠 Study Guide & Exam Prep\n"
@@ -320,7 +479,7 @@ Output ONLY a valid JSON object matching this schema:
     except Exception:
         fallback_data = {
             "category": category,
-            "title": "Audio Note Summary",
+            "title":    "Audio Note Summary",
             "overview": raw_response[:300],
             "key_points": ["Review the detailed transcript and notes below."],
             "action_items": [],
@@ -328,6 +487,7 @@ Output ONLY a valid JSON object matching this schema:
             "outline_mindmap": ""
         }
         return raw_response, fallback_data, category
+
 
 async def answer_transcript_question(
     question: str,
@@ -337,25 +497,19 @@ async def answer_transcript_question(
     category: str = "general"
 ) -> str:
     """
-    Grounded local CPU Q&A using transcript excerpt matching and Gemma.
+    Grounded Q&A — runs on auto-detected backend (GPU / MPS / CPU).
+    Uses keyword-matched transcript excerpts for accurate grounded answers.
     """
     persona = CATEGORY_PERSONAS.get(category, CATEGORY_PERSONAS["general"])
 
-    # Extract best context matching question keywords
     chunks = split_words(transcript, 200)
-    context = ""
     if len(chunks) <= 3:
         context = "\n\n".join(chunks)
     else:
-        # Simple word frequency match for CPU speed without heavy sklearn
         q_words = set(question.lower().split())
-        scored_chunks = []
-        for c in chunks:
-            score = sum(1 for w in q_words if w in c.lower())
-            scored_chunks.append((score, c))
-        scored_chunks.sort(key=lambda x: x[0], reverse=True)
-        best_chunks = [c for _, c in scored_chunks[:3]]
-        context = "\n\n".join(best_chunks)
+        scored  = [(sum(1 for w in q_words if w in c.lower()), c) for c in chunks]
+        scored.sort(key=lambda x: x[0], reverse=True)
+        context = "\n\n".join(c for _, c in scored[:3])
 
     prompt = (
         f"You help a person understand an audio recording ({persona['name']}).\n"

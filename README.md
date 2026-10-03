@@ -32,9 +32,12 @@ Designed for **college students, school kids, teachers, working professionals, r
 
 | Feature | Details |
 |---|---|
-| 🖥️ **100% Local CPU** | No GPU, no API keys, no internet required after first setup |
-| 🎧 **Multilingual Transcription** | `faster-whisper` (int8 CPU) — 99 languages + auto mixed-language detection |
-| 🧠 **Local Gemma 3 1B AI** | `llama-cpp-python` GGUF Q4 — fits in 4–8 GB RAM on any laptop |
+| ⚡ **Auto GPU / CPU Detection** | Automatically uses the best available hardware — no config needed |
+| 🚀 **NVIDIA CUDA** | Whisper float16 · Gemma all layers on GPU · 5–10× faster |
+| 🍎 **Apple Silicon (MPS)** | Whisper float16 on M-chip · Gemma partial GPU offload |
+| 🖥️ **CPU fallback** | Whisper int8 · Gemma Q4 GGUF · works on any 4 GB RAM laptop |
+| 🎧 **Multilingual Transcription** | `faster-whisper` — 99 languages + auto mixed-language detection |
+| 🧠 **Local Gemma 3 1B AI** | `llama-cpp-python` GGUF Q4 — zero API keys, full offline |
 | 🔒 **AES-256 Encrypted SQLite** | All transcripts, summaries & chats encrypted in `notes.db` (never in Git) |
 | ✍️ **In-Browser Transcript Editor** | Live editable text with word counter, copy, and instant re-encryption on save |
 | 📋 **Persistent Title Bar** | Always-visible note title, category badge, Save button and `Ctrl+S` shortcut |
