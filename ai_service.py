@@ -15,6 +15,23 @@ import json
 import time
 from typing import Dict, Any, List, Optional, Tuple
 
+# ─── PyAV Compatibility Patch ─────────────────────────────────────────────────
+# Recent PyAV releases removed the 'metadata_errors' parameter from av.open().
+# faster-whisper calls av.open(..., metadata_errors="ignore"), causing a TypeError.
+# This patch intercepts av.open and removes 'metadata_errors' safely.
+try:
+    import av
+    if not hasattr(av, "_original_open"):
+        av._original_open = av.open
+
+    def patched_open(*args, **kwargs):
+        kwargs.pop("metadata_errors", None)
+        return av._original_open(*args, **kwargs)
+
+    av.open = patched_open
+except Exception:
+    pass
+
 # ─── Model Singletons (lazy-loaded) ───────────────────────────────────────────
 _WHISPER_MODEL = None
 _LLAMA_MODEL   = None
