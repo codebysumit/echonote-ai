@@ -29,11 +29,12 @@ def run(cmd: str, desc: str = ""):
     if result.returncode != 0:
         print(f"\n⚠️  Command exited with code {result.returncode} — continuing anyway...\n")
 
-def pip(*packages, extra_index: str = ""):
-    cmd = f"{sys.executable} -m pip install {' '.join(packages)}"
+def pip(*packages, extra_index: str = "", desc: str = ""):
+    quoted_pkgs = " ".join(f'"{p}"' if any(c in p for c in "[]<>=") else p for p in packages)
+    cmd = f"{sys.executable} -m pip install {quoted_pkgs}"
     if extra_index:
         cmd += f" --extra-index-url {extra_index}"
-    run(cmd)
+    run(cmd, desc=desc)
 
 # ── Hardware Detection ────────────────────────────────────────────────────────
 
