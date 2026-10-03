@@ -453,6 +453,110 @@ async function saveTranscriptChanges() {
   }
 }
 
+// ─── Processing Progress Modal Controller ────────────────────────────────────
+
+let procTimerInterval = null;
+let procSeconds = 0;
+let procStepTimeouts = [];
+
+function showProcessingModal({
+  title = "Processing Audio Intelligence",
+  subtitle = "Transcribing audio and generating structured AI notes...",
+  icon = "🎙️",
+  stepTexts = [
+    "📁 Uploading & encrypting audio file",
+    "🎙️ Transcribing speech with Whisper",
+    "🧠 Gemma AI structured note synthesis",
+    "🔒 Saving to encrypted SQLite database"
+  ]
+} = {}) {
+  const modal = document.getElementById("processing-modal");
+  if (!modal) return;
+
+  clearInterval(procTimerInterval);
+  procStepTimeouts.forEach(clearTimeout);
+  procStepTimeouts = [];
+  procSeconds = 0;
+
+  const titleElem = document.getElementById("proc-title");
+  const subtitleElem = document.getElementById("proc-subtitle");
+  const iconElem = document.getElementById("proc-icon");
+  const barFill = document.getElementById("proc-bar-fill");
+  const percentElem = document.getElementById("proc-percent");
+  const timerElem = document.getElementById("proc-timer");
+
+  if (titleElem) titleElem.textContent = title;
+  if (subtitleElem) subtitleElem.textContent = subtitle;
+  if (iconElem) iconElem.textContent = icon;
+  if (barFill) barFill.style.width = "15%";
+  if (percentElem) percentElem.textContent = "15%";
+  if (timerElem) timerElem.textContent = "⏱️ 00:00";
+
+  stepTexts.forEach((txt, idx) => {
+    const textElem = document.getElementById(`proc-step-text-${idx + 1}`);
+    if (textElem) textElem.textContent = txt;
+  });
+
+  setProcessingStep(1, 15);
+
+  procTimerInterval = setInterval(() => {
+    procSeconds++;
+    const m = String(Math.floor(procSeconds / 60)).padStart(2, "0");
+    const s = String(procSeconds % 60).padStart(2, "0");
+    if (timerElem) timerElem.textContent = `⏱️ ${m}:${s}`;
+  }, 1000);
+
+  modal.classList.add("active");
+}
+
+function setProcessingStep(stepNumber, percent = 0, subtitle = "") {
+  const barFill = document.getElementById("proc-bar-fill");
+  const percentElem = document.getElementById("proc-percent");
+  const subtitleElem = document.getElementById("proc-subtitle");
+
+  if (percent > 0) {
+    if (barFill) barFill.style.width = `${percent}%`;
+    if (percentElem) percentElem.textContent = `${percent}%`;
+  }
+  if (subtitle && subtitleElem) {
+    subtitleElem.textContent = subtitle;
+  }
+
+  for (let i = 1; i <= 4; i++) {
+    const stepElem = document.getElementById(`proc-step-${i}`);
+    if (!stepElem) continue;
+    stepElem.classList.remove("active", "done");
+    const bullet = stepElem.querySelector(".proc-step-bullet");
+    if (i < stepNumber) {
+      stepElem.classList.add("done");
+      if (bullet) bullet.textContent = "✓";
+    } else if (i === stepNumber) {
+      stepElem.classList.add("active");
+      if (bullet) bullet.textContent = String(i);
+    } else {
+      if (bullet) bullet.textContent = String(i);
+    }
+  }
+}
+
+function hideProcessingModal() {
+  clearInterval(procTimerInterval);
+  procStepTimeouts.forEach(clearTimeout);
+  procStepTimeouts = [];
+
+  const barFill = document.getElementById("proc-bar-fill");
+  const percentElem = document.getElementById("proc-percent");
+  if (barFill) barFill.style.width = "100%";
+  if (percentElem) percentElem.textContent = "100%";
+
+  setProcessingStep(5, 100, "Done!");
+
+  setTimeout(() => {
+    const modal = document.getElementById("processing-modal");
+    if (modal) modal.classList.remove("active");
+  }, 400);
+}
+
 async function retranscribeCurrentNote() {
   if (!state.activeNoteId) return;
   if (!state.activeNote || !state.activeNote.audio_filename) {
@@ -460,12 +564,22 @@ async function retranscribeCurrentNote() {
     return;
   }
 
-  const btn1 = document.getElementById("note-retranscribe-btn");
-  const btn2 = document.getElementById("editor-retranscribe-btn");
-  if (btn1) { btn1.disabled = true; btn1.textContent = "⏳ Transcribing..."; }
-  if (btn2) { btn2.disabled = true; btn2.textContent = "⏳ Transcribing..."; }
+  showProcessingModal({
+    title: "Re-Transcribing Audio",
+    subtitle: "Extracting speech from audio file with faster-whisper...",
+    icon: "🎙️",
+    stepTexts: [
+      "📁 Reading encrypted audio from disk",
+      "🎙️ Transcribing speech with Whisper",
+      "🧠 Gemma AI structured note synthesis",
+      "🔒 Updating encrypted SQLite database"
+    ]
+  });
 
-  showToast("🎙️ Extracting speech with faster-whisper...", "info");
+  setProcessingStep(2, 35, "Running faster-whisper speech extraction...");
+  procStepTimeouts.push(setTimeout(() => {
+    setProcessingStep(3, 70, "Regenerating multi-persona notes with Gemma...");
+  }, 8000));
 
   try {
     const res = await fetch(`/api/notes/${state.activeNoteId}/retranscribe`, {
@@ -475,19 +589,22 @@ async function retranscribeCurrentNote() {
 
     if (res.ok) {
       const data = await res.json();
-      state.activeNote = data.note;
-      renderWorkspace();
-      showToast("Speech extracted & note updated successfully! 🎉", "success");
-      loadNotesList();
+      setProcessingStep(4, 95, "Updating encrypted note in SQLite...");
+      setTimeout(() => {
+        hideProcessingModal();
+        state.activeNote = data.note;
+        renderWorkspace();
+        showToast("Speech extracted & note updated successfully! 🎉", "success");
+        loadNotesList();
+      }, 300);
     } else {
+      hideProcessingModal();
       const err = await res.json().catch(() => ({ detail: "Transcription failed" }));
       showToast(err.detail || "Transcription failed. Ensure faster-whisper is installed on server.", "error");
     }
   } catch (err) {
+    hideProcessingModal();
     showToast("Network error during transcription", "error");
-  } finally {
-    if (btn1) { btn1.disabled = false; btn1.textContent = "🎙️ Transcribe"; }
-    if (btn2) { btn2.disabled = false; btn2.textContent = "🎙️ Transcribe Audio"; }
   }
 }
 
@@ -503,7 +620,22 @@ async function handleRegenerateSummary() {
   const customInst = document.getElementById("regen-instructions-input")?.value || "";
 
   closeAllModals();
-  showToast("Re-analyzing with local CPU Gemma...", "info");
+  showProcessingModal({
+    title: "Re-Analyzing with Gemma AI",
+    subtitle: "Synthesizing new persona summary from transcript...",
+    icon: "🧠",
+    stepTexts: [
+      "📄 Reading decrypted transcript",
+      "🎯 Applying selected persona & instructions",
+      "🧠 Gemma AI note & study guide generation",
+      "🔒 Saving updated summary to SQLite"
+    ]
+  });
+
+  setProcessingStep(2, 35, "Applying custom instructions...");
+  procStepTimeouts.push(setTimeout(() => {
+    setProcessingStep(3, 70, "Generating summary, takeaways, and quiz questions...");
+  }, 3000));
 
   try {
     const res = await fetch(`/api/notes/${state.activeNoteId}/regenerate-summary`, {
@@ -517,14 +649,20 @@ async function handleRegenerateSummary() {
 
     if (res.ok) {
       const data = await res.json();
-      state.activeNote = data.note;
-      renderWorkspace();
-      showToast("Summary updated with new persona!", "success");
-      loadNotesList();
+      setProcessingStep(4, 95, "Saving updated note...");
+      setTimeout(() => {
+        hideProcessingModal();
+        state.activeNote = data.note;
+        renderWorkspace();
+        showToast("Summary updated with new persona!", "success");
+        loadNotesList();
+      }, 300);
     } else {
+      hideProcessingModal();
       showToast("Failed to regenerate summary", "error");
     }
   } catch (err) {
+    hideProcessingModal();
     showToast("Error regenerating summary", "error");
   }
 }
@@ -641,7 +779,25 @@ async function handleAudioUpload() {
   formData.append("language", language);
 
   closeAllModals();
-  showToast("Transcribing on local CPU & encrypting...", "info");
+  showProcessingModal({
+    title: "Processing Audio Intelligence",
+    subtitle: "Uploading and preparing local speech-to-text pipeline...",
+    icon: "🎙️",
+    stepTexts: [
+      "📁 Uploading & encrypting audio file",
+      "🎙️ Transcribing speech with Whisper",
+      "🧠 Gemma AI structured note synthesis",
+      "🔒 Saving to encrypted SQLite database"
+    ]
+  });
+
+  procStepTimeouts.push(setTimeout(() => {
+    setProcessingStep(2, 40, "Transcribing speech with faster-whisper...");
+  }, 1200));
+
+  procStepTimeouts.push(setTimeout(() => {
+    setProcessingStep(3, 75, "Synthesizing structured notes with local Gemma AI...");
+  }, 9000));
 
   try {
     const res = await fetch("/api/upload-audio", {
@@ -652,16 +808,23 @@ async function handleAudioUpload() {
 
     if (res.ok) {
       const data = await res.json();
-      showToast("Audio processed & saved locally!", "success");
-      await loadNotesList();
-      if (data.note) {
-        selectNote(data.note.id);
-      }
-      state.recordedBlob = null;
+      setProcessingStep(4, 95, "Encrypting and storing in SQLite...");
+      setTimeout(async () => {
+        hideProcessingModal();
+        showToast("Audio processed & saved locally! 🎉", "success");
+        await loadNotesList();
+        if (data.note) {
+          selectNote(data.note.id);
+        }
+        state.recordedBlob = null;
+      }, 300);
     } else {
-      showToast("Audio upload failed", "error");
+      hideProcessingModal();
+      const err = await res.json().catch(() => ({ detail: "Upload failed" }));
+      showToast(err.detail || "Audio upload failed", "error");
     }
   } catch (err) {
+    hideProcessingModal();
     showToast("Network error uploading audio", "error");
   }
 }

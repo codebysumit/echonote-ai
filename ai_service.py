@@ -327,11 +327,21 @@ async def transcribe_audio_file(
 
             # First attempt: with VAD filtering (cleans up silences)
             try:
-                segments, info = model.transcribe(temp_path, vad_filter=True, language=lang_param)
+                segments, info = model.transcribe(
+                    temp_path,
+                    vad_filter=True,
+                    language=lang_param,
+                    task="transcribe"
+                )
                 lines = [s.text.strip() for s in segments]
             except Exception as vad_err:
                 print(f"[Whisper] VAD filter attempt failed ({vad_err}), retrying without VAD...")
-                segments, info = model.transcribe(temp_path, vad_filter=False, language=lang_param)
+                segments, info = model.transcribe(
+                    temp_path,
+                    vad_filter=False,
+                    language=lang_param,
+                    task="transcribe"
+                )
                 lines = [s.text.strip() for s in segments]
 
             transcript = " ".join(lines).strip()
@@ -438,6 +448,90 @@ async def auto_detect_category(transcript: str) -> str:
     return "general"
 
 
+def parse_llm_json_robust(raw_text: str, default_category: str = "general") -> Dict[str, Any]:
+    """
+    Robust JSON extractor that handles markdown code blocks, trailing commas,
+    unescaped characters, and partial LLM output without ever failing.
+    """
+    import re
+
+    cleaned = raw_text.strip()
+
+    # 1. Strip markdown code fences
+    cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\s*```$", "", cleaned)
+    cleaned = cleaned.strip()
+
+    # 2. Locate first '{' and last '}'
+    first_brace = cleaned.find("{")
+    last_brace  = cleaned.rfind("}")
+    if first_brace != -1 and last_brace != -1 and last_brace > first_brace:
+        json_candidate = cleaned[first_brace:last_brace+1]
+    else:
+        json_candidate = cleaned
+
+    # 3. Clean common JSON syntax flaws from LLMs
+    # Remove trailing commas before } or ]
+    fixed_json = re.sub(r",\s*(\}|\])", r"\1", json_candidate)
+
+    try:
+        data = json.loads(fixed_json)
+        if isinstance(data, dict):
+            return data
+    except Exception:
+        pass
+
+    # 4. Regex-based heuristic field extraction fallback
+    data = {
+        "category": default_category,
+        "title": "Audio Note Summary",
+        "overview": "",
+        "key_points": [],
+        "action_items": [],
+        "study_exam_questions": [],
+        "outline_mindmap": ""
+    }
+
+    # Extract title
+    title_match = re.search(r'"title"\s*:\s*"([^"]+)"', raw_text)
+    if title_match:
+        data["title"] = title_match.group(1)
+
+    # Extract overview
+    overview_match = re.search(r'"overview"\s*:\s*"([^"]+)"', raw_text)
+    if overview_match:
+        data["overview"] = overview_match.group(1)
+    else:
+        # Fallback to plain paragraphs from raw text
+        non_json_lines = [l.strip() for l in raw_text.splitlines() if not l.strip().startswith(("{", "}", "[", "]", '"', "```"))]
+        data["overview"] = " ".join(non_json_lines[:3]) if non_json_lines else raw_text[:300]
+
+    # Extract key points
+    kp_matches = re.findall(r'"(?:key_points|takeaways|points)"\s*:\s*\[(.*?)\]', raw_text, flags=re.DOTALL)
+    if kp_matches:
+        items = re.findall(r'"([^"]{4,})"', kp_matches[0])
+        if items:
+            data["key_points"] = items
+    if not data["key_points"]:
+        bullet_items = re.findall(r'^[•\-\*]\s*(.+)$', raw_text, flags=re.MULTILINE)
+        if bullet_items:
+            data["key_points"] = bullet_items[:6]
+
+    # Extract action items
+    act_matches = re.findall(r'"(?:action_items|tasks|todos)"\s*:\s*\[(.*?)\]', raw_text, flags=re.DOTALL)
+    if act_matches:
+        act_items = re.findall(r'"([^"]{4,})"', act_matches[0])
+        if act_items:
+            data["action_items"] = act_items
+
+    # Extract Q&A
+    q_matches = re.findall(r'"question"\s*:\s*"([^"]+)"\s*,\s*"answer"\s*:\s*"([^"]+)"', raw_text)
+    if q_matches:
+        data["study_exam_questions"] = [{"question": q, "answer": a} for q, a in q_matches]
+
+    return data
+
+
 async def generate_enhanced_summary(
     transcript: str,
     category: str = "auto",
@@ -446,6 +540,7 @@ async def generate_enhanced_summary(
     """
     Generates structured summaries for students, teachers, meetings, and professionals.
     Runs on the auto-detected best backend (GPU / MPS / CPU).
+    Guarantees formatted Markdown output — never returns raw JSON syntax to the user.
     """
     if not transcript or len(transcript.strip()) < 5:
         return "No transcript text available to summarize.", {}, "general"
@@ -454,7 +549,12 @@ async def generate_enhanced_summary(
         category = await auto_detect_category(transcript)
 
     persona = CATEGORY_PERSONAS.get(category, CATEGORY_PERSONAS["general"])
-    rules   = "Use clear, concise sentences. Use only the given text. Do not invent facts."
+    rules   = (
+        "Use clear, concise sentences. Use ONLY facts present in the text. "
+        "CRITICAL LANGUAGE RULE: Write the title, overview, key points, and action items in the "
+        "SAME primary language as the transcript (e.g., if the speech is in Hindi, write the summary in natural Hindi; "
+        "if Bengali, in Bengali; if English, in English; if mixed Hinglish, keep natural phrasing)."
+    )
 
     system_prompt = f"""You are EchoNote Chief Note Architect.
 Generate a structured note for {persona['name']}.
@@ -477,7 +577,7 @@ Output ONLY a valid JSON object matching this schema:
   ],
   "study_exam_questions": [
     {{
-      "question": "Important exam or review question",
+      "question": "Important review question",
       "answer": "Answer based on text"
     }}
   ],
@@ -489,7 +589,7 @@ Output ONLY a valid JSON object matching this schema:
     if len(parts) == 1:
         user_prompt = (f"TRANSCRIPT:\n{parts[0]}\n\n"
                        f"SPECIAL REQUESTS:\n{custom_instructions or 'Standard synthesis'}")
-        raw_response = call_local_gemma(user_prompt, system_instruction=system_prompt, max_tokens=500)
+        raw_response = call_local_gemma(user_prompt, system_instruction=system_prompt, max_tokens=600)
     else:
         part_notes = []
         for p in parts[:4]:
@@ -501,48 +601,42 @@ Output ONLY a valid JSON object matching this schema:
         joined       = "\n".join(part_notes)
         user_prompt  = (f"NOTES FROM AUDIO:\n{joined}\n\n"
                         f"SPECIAL REQUESTS:\n{custom_instructions or 'Standard synthesis'}")
-        raw_response = call_local_gemma(user_prompt, system_instruction=system_prompt, max_tokens=500)
+        raw_response = call_local_gemma(user_prompt, system_instruction=system_prompt, max_tokens=600)
 
-    # Clean markdown code fences if present
-    cleaned = raw_response.strip()
-    if cleaned.startswith("```json"): cleaned = cleaned[7:]
-    if cleaned.startswith("```"):     cleaned = cleaned[3:]
-    if cleaned.endswith("```"):       cleaned = cleaned[:-3]
-    cleaned = cleaned.strip()
+    # Robust JSON parsing and fallback extraction
+    data = parse_llm_json_robust(raw_response, default_category=category)
 
-    try:
-        data = json.loads(cleaned)
-        md_summary = f"""# {data.get('title', 'Audio Note')}
+    # Build clean human-readable Markdown summary (Guaranteed no raw JSON code fences)
+    title = data.get("title") or "Audio Note"
+    overview = data.get("overview") or "Overview generated from audio transcript."
+    key_points = data.get("key_points") or ["Processed and encrypted in SQLite."]
+    action_items = data.get("action_items") or []
+    study_questions = data.get("study_exam_questions") or []
+
+    md_summary = f"""# {title}
 
 **Category:** {persona['name']}
 
 ### 📌 Overview
-{data.get('overview', '')}
+{overview}
 
 ### 💡 Key Takeaways
-""" + "\n".join([f"- {kp}" for kp in data.get("key_points", [])])
+""" + "\n".join([f"- {kp}" for kp in key_points])
 
-        if data.get("action_items"):
-            md_summary += "\n\n### ✅ Action Items & Tasks\n" + \
-                          "\n".join([f"- [ ] {ai}" for ai in data.get("action_items", [])])
+    if action_items:
+        md_summary += "\n\n### ✅ Action Items & Tasks\n" + \
+                      "\n".join([f"- [ ] {ai}" for ai in action_items])
 
-        if data.get("study_exam_questions"):
-            md_summary += "\n\n### 🧠 Study Guide & Exam Prep\n"
-            for idx, q in enumerate(data.get("study_exam_questions", []), 1):
-                md_summary += f"\n**Q{idx}: {q.get('question')}**\n> *Answer:* {q.get('answer')}\n"
+    if study_questions:
+        md_summary += "\n\n### 🧠 Study Guide & Exam Prep\n"
+        for idx, q in enumerate(study_questions, 1):
+            q_text = q.get('question') if isinstance(q, dict) else str(q)
+            a_text = q.get('answer', '') if isinstance(q, dict) else ''
+            md_summary += f"\n**Q{idx}: {q_text}**"
+            if a_text:
+                md_summary += f"\n> *Answer:* {a_text}\n"
 
-        return md_summary, data, category
-    except Exception:
-        fallback_data = {
-            "category": category,
-            "title":    "Audio Note Summary",
-            "overview": raw_response[:300],
-            "key_points": ["Review the detailed transcript and notes below."],
-            "action_items": [],
-            "study_exam_questions": [],
-            "outline_mindmap": ""
-        }
-        return raw_response, fallback_data, category
+    return md_summary, data, category
 
 
 async def answer_transcript_question(

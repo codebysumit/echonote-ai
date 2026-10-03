@@ -448,6 +448,53 @@
       </div>
     </div>
 
+    <!-- Modal 5: Live Audio Processing & AI Synthesis Progress -->
+    <div class="modal-overlay" id="processing-modal" style="pointer-events: none;">
+      <div class="modal-dialog processing-dialog" style="pointer-events: auto;">
+        <div class="processing-spinner-container">
+          <div class="processing-glow-ring"></div>
+          <div class="processing-center-icon" id="proc-icon">🎙️</div>
+        </div>
+
+        <h3 class="processing-title" id="proc-title">Processing Audio Intelligence</h3>
+        <p class="processing-subtitle" id="proc-subtitle">Transcribing audio and generating structured AI notes...</p>
+
+        <!-- Animated Progress Bar -->
+        <div class="progress-bar-track">
+          <div class="progress-bar-fill" id="proc-bar-fill"></div>
+        </div>
+
+        <div class="processing-stats-row">
+          <span id="proc-percent">15%</span>
+          <span id="proc-timer">⏱️ 00:00</span>
+        </div>
+
+        <!-- 4 Step Pipeline Checklist -->
+        <div class="processing-steps-container">
+          <div class="proc-step-item active" id="proc-step-1">
+            <div class="proc-step-bullet">1</div>
+            <span id="proc-step-text-1">📁 Uploading &amp; encrypting audio</span>
+          </div>
+          <div class="proc-step-item" id="proc-step-2">
+            <div class="proc-step-bullet">2</div>
+            <span id="proc-step-text-2">🎙️ Transcribing speech with Whisper</span>
+          </div>
+          <div class="proc-step-item" id="proc-step-3">
+            <div class="proc-step-bullet">3</div>
+            <span id="proc-step-text-3">🧠 Gemma AI structured note synthesis</span>
+          </div>
+          <div class="proc-step-item" id="proc-step-4">
+            <div class="proc-step-bullet">4</div>
+            <span id="proc-step-text-4">🔒 Saving to encrypted SQLite database</span>
+          </div>
+        </div>
+
+        <div class="processing-privacy-pill">
+          🔒 100% Local Processing · Zero cloud data transfer
+        </div>
+      </div>
+    </div>
+
     <!-- Toast Notifications Container -->
     <div id="toast-container"></div>
   </div>
