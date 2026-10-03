@@ -17,7 +17,9 @@ const state = {
   // Local Master Encryption Key
   encryptionKey: localStorage.getItem("SAN_ENC_KEY") || "",
   
-  // Audio Recording State
+  // Audio Recording & Upload State
+  uploadModalMode: "file",
+  selectedAudioFile: null,
   mediaRecorder: null,
   audioChunks: [],
   recordingInterval: null,
@@ -755,15 +757,194 @@ function sendQuickPrompt(promptText) {
   }
 }
 
-// Audio Upload & Processing
+// ─── Audio Upload & Manual Note Modal Controller ───────────────────────────
+
+function switchUploadModalTab(mode) {
+  state.uploadModalMode = mode;
+
+  const btnFile = document.getElementById("modal-tab-btn-file");
+  const btnRecord = document.getElementById("modal-tab-btn-record");
+  const btnText = document.getElementById("modal-tab-btn-text");
+
+  if (btnFile) btnFile.classList.toggle("active", mode === "file");
+  if (btnRecord) btnRecord.classList.toggle("active", mode === "record");
+  if (btnText) btnText.classList.toggle("active", mode === "text");
+
+  const paneFile = document.getElementById("modal-pane-file");
+  const paneRecord = document.getElementById("modal-pane-record");
+  const paneText = document.getElementById("modal-pane-text");
+
+  if (paneFile) paneFile.style.display = mode === "file" ? "block" : "none";
+  if (paneRecord) paneRecord.style.display = mode === "record" ? "block" : "none";
+  if (paneText) paneText.style.display = mode === "text" ? "flex" : "none";
+
+  const modalTitle = document.getElementById("upload-modal-title");
+  const submitBtn = document.getElementById("modal-submit-create-btn");
+
+  if (mode === "file") {
+    if (modalTitle) modalTitle.textContent = "📁 Upload Audio File";
+    if (submitBtn) submitBtn.textContent = "🎙️ Transcribe & Summarize";
+  } else if (mode === "record") {
+    if (modalTitle) modalTitle.textContent = "🎙️ Record Live Voice";
+    if (submitBtn) submitBtn.textContent = "🎙️ Transcribe & Summarize";
+  } else if (mode === "text") {
+    if (modalTitle) modalTitle.textContent = "✍️ Paste Text / Generate AI Note";
+    if (submitBtn) submitBtn.textContent = "✨ Generate AI Note";
+  }
+}
+
 function openUploadModal() {
   const modal = document.getElementById("upload-modal");
-  if (modal) modal.classList.add("active");
+  if (!modal) return;
+
+  // Reset file selection & recorded blob
+  state.selectedAudioFile = null;
+  state.recordedBlob = null;
+  updateDropzoneFileState(null);
+
+  const previewAudio = document.getElementById("record-preview-audio");
+  if (previewAudio) {
+    previewAudio.src = "";
+    previewAudio.style.display = "none";
+  }
+  const timerElem = document.getElementById("record-timer");
+  if (timerElem) timerElem.textContent = "00:00";
+
+  const manualTitle = document.getElementById("manual-note-title");
+  const manualTranscript = document.getElementById("manual-note-transcript");
+  if (manualTitle) manualTitle.value = "";
+  if (manualTranscript) manualTranscript.value = "";
+
+  switchUploadModalTab("file");
+  modal.classList.add("active");
+}
+
+function updateDropzoneFileState(file) {
+  const previewDiv = document.getElementById("dropzone-selected-preview");
+  const label = document.getElementById("dropzone-label");
+  const hint = document.getElementById("dropzone-hint");
+  const fileInput = document.getElementById("audio-file-input");
+
+  if (!file) {
+    if (fileInput) fileInput.value = "";
+    if (previewDiv) { previewDiv.innerHTML = ""; previewDiv.style.display = "none"; }
+    if (label) label.textContent = "Click or Drag & Drop audio file here";
+    if (hint) hint.textContent = "Processed locally (MP3, WAV, M4A, OGG, WEBM, FLAC)";
+    return;
+  }
+
+  const sizeKb = file.size ? (file.size / 1024).toFixed(1) : "0";
+  const sizeMb = file.size ? (file.size / (1024 * 1024)).toFixed(2) : "0";
+  const sizeStr = file.size > 1024 * 1024 ? `${sizeMb} MB` : `${sizeKb} KB`;
+
+  if (label) label.textContent = "Ready for speech transcription";
+  if (hint) hint.textContent = "Click 'Transcribe & Summarize' to extract intelligence.";
+
+  if (previewDiv) {
+    previewDiv.style.display = "block";
+    previewDiv.innerHTML = `
+      <div class="dropzone-file-selected">
+        <div class="dropzone-file-info">
+          <span style="font-size: 1.3rem;">🎵</span>
+          <div>
+            <div class="dropzone-file-name" title="${escapeHtml(file.name)}">${escapeHtml(file.name)}</div>
+            <div class="dropzone-file-size">${sizeStr} · Audio file ready</div>
+          </div>
+        </div>
+        <button type="button" class="dropzone-clear-btn" onclick="clearSelectedAudioFile(event)" title="Remove file">✕ Remove</button>
+      </div>
+    `;
+  }
+}
+
+function clearSelectedAudioFile(e) {
+  if (e) e.stopPropagation();
+  state.selectedAudioFile = null;
+  updateDropzoneFileState(null);
+  showToast("Audio selection cleared", "info");
+}
+
+function submitCreateNoteModal() {
+  if (state.uploadModalMode === "text") {
+    handleManualNoteCreate();
+  } else {
+    handleAudioUpload();
+  }
+}
+
+async function handleManualNoteCreate() {
+  const titleInput = document.getElementById("manual-note-title");
+  const textInput = document.getElementById("manual-note-transcript");
+  const catSelect = document.getElementById("upload-category-select");
+  const langSelect = document.getElementById("upload-language-select");
+
+  const transcript = (textInput?.value || "").trim();
+  const title = (titleInput?.value || "").trim() || "Untitled Smart Note";
+  const category = catSelect?.value || "general";
+  const language = langSelect?.value || "auto";
+
+  if (!transcript) {
+    showToast("Please enter or paste your note text / transcript first", "warning");
+    if (textInput) textInput.focus();
+    return;
+  }
+
+  closeAllModals();
+
+  showProcessingModal({
+    title: "Synthesizing Note Intelligence",
+    subtitle: "Analyzing text and generating structured AI summary with Gemma...",
+    icon: "✨",
+    stepTexts: [
+      "📄 Ingesting and formatting text",
+      "🎯 Applying selected persona & instructions",
+      "🧠 Gemma AI note & study guide generation",
+      "🔒 Saving to encrypted SQLite database"
+    ]
+  });
+
+  setProcessingStep(2, 35, "Applying persona structure...");
+  procStepTimeouts.push(setTimeout(() => {
+    setProcessingStep(3, 70, "Generating summary, takeaways, and quiz questions...");
+  }, 3000));
+
+  try {
+    const res = await fetch("/api/notes/create-manual", {
+      method: "POST",
+      headers: getHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({
+        title: title,
+        category: category,
+        transcript: transcript,
+        language: language
+      })
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      setProcessingStep(4, 95, "Storing encrypted note in SQLite...");
+      setTimeout(async () => {
+        hideProcessingModal();
+        showToast("AI Note created & summarized! 🎉", "success");
+        await loadNotesList();
+        if (data.note) {
+          selectNote(data.note.id);
+        }
+      }, 300);
+    } else {
+      hideProcessingModal();
+      const err = await res.json().catch(() => ({ detail: "Failed to create note" }));
+      showToast(err.detail || "Failed to create note", "error");
+    }
+  } catch (err) {
+    hideProcessingModal();
+    showToast("Network error creating note", "error");
+  }
 }
 
 async function handleAudioUpload() {
   const fileInput = document.getElementById("audio-file-input");
-  const file = fileInput?.files[0] || state.recordedBlob;
+  const file = state.selectedAudioFile || fileInput?.files[0] || state.recordedBlob;
 
   if (!file) {
     showToast("Please choose an audio file or record audio first", "warning");
@@ -816,6 +997,7 @@ async function handleAudioUpload() {
         if (data.note) {
           selectNote(data.note.id);
         }
+        state.selectedAudioFile = null;
         state.recordedBlob = null;
       }, 300);
     } else {
@@ -837,8 +1019,10 @@ async function toggleLiveRecording() {
   if (state.mediaRecorder && state.mediaRecorder.state === "recording") {
     state.mediaRecorder.stop();
     clearInterval(state.recordingInterval);
-    recordBtn.classList.remove("recording");
-    recordBtn.innerHTML = "🎙️";
+    if (recordBtn) {
+      recordBtn.classList.remove("recording");
+      recordBtn.innerHTML = "🎙️";
+    }
     showToast("Audio recording completed. Ready to process!", "success");
   } else {
     try {
@@ -862,8 +1046,10 @@ async function toggleLiveRecording() {
 
       state.mediaRecorder.start();
       state.recordingSeconds = 0;
-      recordBtn.classList.add("recording");
-      recordBtn.innerHTML = "⏹️";
+      if (recordBtn) {
+        recordBtn.classList.add("recording");
+        recordBtn.innerHTML = "⏹️";
+      }
 
       state.recordingInterval = setInterval(() => {
         state.recordingSeconds++;
@@ -981,26 +1167,44 @@ function setupEventListeners() {
   const dropzone = document.getElementById("audio-dropzone");
   const fileInput = document.getElementById("audio-file-input");
   if (dropzone && fileInput) {
-    dropzone.addEventListener("click", () => fileInput.click());
+    dropzone.addEventListener("click", (e) => {
+      // Don't trigger if clicked on clear button
+      if (e.target.closest(".dropzone-clear-btn")) return;
+      fileInput.click();
+    });
+
     dropzone.addEventListener("dragover", (e) => {
       e.preventDefault();
       dropzone.classList.add("dragover");
     });
+
     dropzone.addEventListener("dragleave", () => dropzone.classList.remove("dragover"));
+
     dropzone.addEventListener("drop", (e) => {
       e.preventDefault();
       dropzone.classList.remove("dragover");
-      if (e.dataTransfer.files.length) {
-        fileInput.files = e.dataTransfer.files;
-        document.getElementById("dropzone-label").textContent = `Selected: ${e.dataTransfer.files[0].name}`;
+      if (e.dataTransfer.files && e.dataTransfer.files.length) {
+        state.selectedAudioFile = e.dataTransfer.files[0];
+        updateDropzoneFileState(state.selectedAudioFile);
       }
     });
+
     fileInput.addEventListener("change", () => {
-      if (fileInput.files.length) {
-        document.getElementById("dropzone-label").textContent = `Selected: ${fileInput.files[0].name}`;
+      if (fileInput.files && fileInput.files.length) {
+        state.selectedAudioFile = fileInput.files[0];
+        updateDropzoneFileState(state.selectedAudioFile);
       }
     });
   }
+
+  // Close modals when clicking on the backdrop
+  document.querySelectorAll(".modal-overlay").forEach(overlay => {
+    overlay.addEventListener("click", (e) => {
+      if (e.target === overlay && overlay.id !== "processing-modal") {
+        closeAllModals();
+      }
+    });
+  });
 
   const transcriptEditor = document.getElementById("transcript-editor");
   if (transcriptEditor) {

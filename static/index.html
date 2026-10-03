@@ -201,47 +201,80 @@
       </aside>
     </main>
 
-    <!-- Modal 1: Upload or Record Audio -->
+    <!-- Modal 1: Upload or Record Audio or Paste Manual Note -->
     <div class="modal-overlay" id="upload-modal">
       <div class="modal-dialog">
         <div class="modal-header">
-          <h3 class="modal-title">🎙️ Create Smart Audio Note</h3>
+          <h3 class="modal-title" id="upload-modal-title">🎙️ Create Smart Audio Note</h3>
           <button class="btn-close-modal" onclick="closeAllModals()">&times;</button>
         </div>
         <div class="modal-body">
-          <div class="dropzone" id="audio-dropzone">
-            <div class="dropzone-icon">📁</div>
-            <p id="dropzone-label" style="font-weight: 600; color: var(--text-primary); margin-bottom: 4px;">
-              Click or Drag & Drop audio file here
-            </p>
-            <p style="font-size: 0.75rem; color: var(--text-secondary);">
-              Processed 100% on CPU (MP3, WAV, M4A, OGG, WEBM, FLAC)
-            </p>
-            <input type="file" id="audio-file-input" accept="audio/*" style="display: none;" />
+          <!-- Modal Tab Navigation -->
+          <div class="modal-nav-tabs">
+            <button type="button" class="modal-tab-btn active" id="modal-tab-btn-file" onclick="switchUploadModalTab('file')">📁 Upload Audio</button>
+            <button type="button" class="modal-tab-btn" id="modal-tab-btn-record" onclick="switchUploadModalTab('record')">🎙️ Record Voice</button>
+            <button type="button" class="modal-tab-btn" id="modal-tab-btn-text" onclick="switchUploadModalTab('text')">✍️ Paste Text / Notes</button>
           </div>
 
-          <div style="text-align: center; color: var(--text-muted); font-size: 0.8rem; font-weight: 600;">— OR RECORD LIVE VOICE —</div>
-
-          <!-- Live In-Browser Microphone Recorder -->
-          <div style="background: var(--bg-tertiary); border-radius: var(--radius-md); padding: 14px; text-align: center;">
-            <button class="record-pulse-btn" id="mic-record-btn" onclick="toggleLiveRecording()">🎙️</button>
-            <div id="record-timer" style="font-family: 'JetBrains Mono', monospace; font-size: 0.9rem; font-weight: 700; margin-top: 8px; color: var(--text-primary);">00:00</div>
-            <audio id="record-preview-audio" controls style="display: none; width: 100%; margin-top: 10px; height: 32px;"></audio>
+          <!-- Tab Pane 1: File Upload -->
+          <div id="modal-pane-file">
+            <div class="dropzone" id="audio-dropzone">
+              <div class="dropzone-icon">📁</div>
+              <p id="dropzone-label" style="font-weight: 600; color: var(--text-primary); margin-bottom: 4px;">
+                Click or Drag &amp; Drop audio file here
+              </p>
+              <p style="font-size: 0.75rem; color: var(--text-secondary);" id="dropzone-hint">
+                Processed locally (MP3, WAV, M4A, OGG, WEBM, FLAC)
+              </p>
+              <input type="file" id="audio-file-input" accept="audio/*,.mp3,.wav,.m4a,.ogg,.webm,.flac,.aac" style="display: none;" />
+            </div>
+            <div id="dropzone-selected-preview" style="display: none;"></div>
           </div>
 
-          <!-- Category Persona Selector -->
+          <!-- Tab Pane 2: Live In-Browser Microphone Recorder -->
+          <div id="modal-pane-record" style="display: none;">
+            <div style="background: var(--bg-tertiary); border-radius: var(--radius-md); padding: 18px; text-align: center; border: 1px solid var(--border-subtle);">
+              <button class="record-pulse-btn" id="mic-record-btn" onclick="toggleLiveRecording()" type="button">🎙️</button>
+              <div id="record-timer" style="font-family: 'JetBrains Mono', monospace; font-size: 0.95rem; font-weight: 700; margin-top: 10px; color: var(--text-primary);">00:00</div>
+              <p style="font-size: 0.78rem; color: var(--text-muted); margin-top: 4px;">Click the microphone button to start / stop live voice recording</p>
+              <audio id="record-preview-audio" controls style="display: none; width: 100%; margin-top: 12px; height: 36px;"></audio>
+            </div>
+          </div>
+
+          <!-- Tab Pane 3: Paste Text / Manual Note Creation -->
+          <div id="modal-pane-text" style="display: none; display: flex; flex-direction: column; gap: 12px;">
+            <div class="form-group">
+              <label for="manual-note-title">Note Title:</label>
+              <input type="text" id="manual-note-title" class="form-input" placeholder="e.g. Biology Lecture 4: Cellular Respiration" />
+            </div>
+            <div class="form-group">
+              <label for="manual-note-transcript">Transcript / Raw Text / Lecture Notes:</label>
+              <textarea id="manual-note-transcript" class="form-input" rows="7" placeholder="Paste your audio transcript, meeting minutes, professor lesson, or thoughts here... Local Gemma AI will structure, summarize, and generate study flashcards automatically."></textarea>
+            </div>
+          </div>
+
+          <!-- Common Persona / Category Selector -->
           <div class="form-group">
             <label for="upload-category-select">Note Persona / Context:</label>
             <select id="upload-category-select" class="form-select">
-              <!-- Populated by JS -->
+              <option value="auto">🤖 Auto-Detect with Local Gemma</option>
+              <option value="college">🎓 College / University Lecture</option>
+              <option value="school">🏫 School / Student Class</option>
+              <option value="teacher">👩‍🏫 Teacher / Educator Lesson</option>
+              <option value="professional">💼 Professional / Meeting &amp; Standup</option>
+              <option value="voicenote">🎙️ Personal Voice Note &amp; Brainstorm</option>
+              <option value="interview">🎙️ Interview / Podcast / Conversation</option>
+              <option value="recipe">🍳 Cooking Recipe &amp; Culinary</option>
+              <option value="shopping">🛒 Shopping, Deals &amp; Expenses</option>
+              <option value="general">📝 General Audio Note</option>
             </select>
           </div>
 
-          <!-- Language Selector — All 99 Whisper-supported languages -->
+          <!-- Common Language Selector — All 99 Whisper-supported languages -->
           <div class="form-group">
             <label for="upload-language-select">Spoken Language:</label>
             <select id="upload-language-select" class="form-select">
-              <option value="auto">🌐 Auto-Detect (Multilingual & Mixed Language)</option>
+              <option value="auto">🌐 Auto-Detect (Multilingual &amp; Mixed Language)</option>
 
               <optgroup label="── South Asia ──────────────────────">
                 <option value="hi">Hindi — हिंदी</option>
@@ -364,7 +397,7 @@
         </div>
         <div class="modal-footer">
           <button class="btn-secondary" onclick="closeAllModals()">Cancel</button>
-          <button class="btn-primary" onclick="handleAudioUpload()">Transcribe & Summarize</button>
+          <button class="btn-primary" id="modal-submit-create-btn" onclick="submitCreateNoteModal()">Transcribe &amp; Summarize</button>
         </div>
       </div>
     </div>
@@ -373,14 +406,23 @@
     <div class="modal-overlay" id="regenerate-modal">
       <div class="modal-dialog">
         <div class="modal-header">
-          <h3 class="modal-title">🔄 Re-Analyze with Gemma (CPU)</h3>
+          <h3 class="modal-title">🔄 Re-Analyze with Gemma</h3>
           <button class="btn-close-modal" onclick="closeAllModals()">&times;</button>
         </div>
         <div class="modal-body">
           <div class="form-group">
             <label for="regen-category-select">Select New Persona:</label>
             <select id="regen-category-select" class="form-select">
-              <!-- Populated by JS -->
+              <option value="auto">🤖 Auto-Detect with Local Gemma</option>
+              <option value="college">🎓 College / University Lecture</option>
+              <option value="school">🏫 School / Student Class</option>
+              <option value="teacher">👩‍🏫 Teacher / Educator Lesson</option>
+              <option value="professional">💼 Professional / Meeting &amp; Standup</option>
+              <option value="voicenote">🎙️ Personal Voice Note &amp; Brainstorm</option>
+              <option value="interview">🎙️ Interview / Podcast / Conversation</option>
+              <option value="recipe">🍳 Cooking Recipe &amp; Culinary</option>
+              <option value="shopping">🛒 Shopping, Deals &amp; Expenses</option>
+              <option value="general">📝 General Audio Note</option>
             </select>
           </div>
 
