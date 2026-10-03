@@ -81,7 +81,7 @@ EchoNote AI automatically detects the type of audio and generates a tailored str
 
 ### 1. Clone the Repository
 ```bash
-git clone https://github.com/YOUR_USERNAME/echonote-ai.git
+git clone https://github.com/codebysumit/echonote-ai.git
 cd echonote-ai
 ```
 
@@ -180,7 +180,7 @@ echonote-ai/
 
 ## 📄 License
 
-MIT License — feel free to use, fork, and build on EchoNote AI.
+[MIT License](LICENSE) — feel free to use, fork, and build on EchoNote AI.
 
 ---
 
