@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: smart-audio-notes-studio
+    name: echonote-ai
     env: python
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn app:app --host 0.0.0.0 --port $PORT
@@ -10,7 +10,3 @@ services:
         value: 3.11.0
       - key: MASTER_ENCRYPTION_KEY
         generateValue: true
-      - key: GROQ_API_KEY
-        sync: false
-      - key: GEMINI_API_KEY
-        sync: false

@@ -105,11 +105,19 @@ The installer **automatically detects your hardware** and picks the right `llama
 > The CPU wheel (`/whl/cpu`) is **compiled without CUDA support** — even if you have an NVIDIA GPU, that wheel cannot use it.
 > `install.py` detects your CUDA version and downloads the correct pre-built GPU wheel automatically.
 
-### 3. Manual Install *(if you prefer)*
+### 3. Alternative: Standard pip install (CPU Mode)
+
+For standard CPU systems, CI/CD pipelines, Docker, or cloud platforms (Render, Railway):
+```bash
+pip install -r requirements.txt
+```
+> *(Includes pre-compiled wheels automatically — no C++ compiler or CMake required!)*
+
+### 4. Custom Manual GPU Install *(optional)*
 
 **Core + Whisper:**
 ```bash
-pip install fastapi uvicorn[standard] cryptography pydantic python-multipart python-dotenv
+pip install fastapi "uvicorn[standard]" cryptography pydantic python-multipart python-dotenv
 pip install faster-whisper huggingface_hub
 ```
 
@@ -134,7 +142,7 @@ pip install llama-cpp-python --extra-index-url https://abetlen.github.io/llama-c
 
 > 💡 Not sure which CUDA version you have? Run `nvidia-smi` in a terminal — look for `CUDA Version: XX.X` in the top-right corner.
 
-### 4. Configure (Optional)
+### 5. Configure (Optional)
 ```bash
 cp .env.example .env
 ```
@@ -145,7 +153,7 @@ CPU_THREADS=4                # number of CPU threads for inference
 MASTER_ENCRYPTION_KEY=your-secret-passphrase
 ```
 
-### 5. Run EchoNote AI
+### 6. Run EchoNote AI
 ```bash
 python app.py
 ```
