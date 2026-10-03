@@ -76,8 +76,9 @@ EchoNote AI automatically detects the type of audio and generates a tailored str
 
 ### Prerequisites
 - Python 3.10+
-- 4–8 GB RAM (for Gemma 3 1B Q4)
-- ~1 GB disk space (for Whisper `base` + Gemma GGUF weights, downloaded once on first use)
+- 4–8 GB RAM minimum (Gemma 3 1B Q4 fits in ~800 MB)
+- ~1 GB disk space for model weights (auto-downloaded on first run)
+- Optional: NVIDIA GPU (CUDA 11.x / 12.x) or Apple M-chip for faster inference
 
 ### 1. Clone the Repository
 ```bash
@@ -85,48 +86,83 @@ git clone https://github.com/codebysumit/echonote-ai.git
 cd echonote-ai
 ```
 
-### 2. Install Dependencies
+### 2. Run the Smart Installer ⚡ *(recommended)*
 
-**FastAPI + encryption core (lightweight):**
 ```bash
-pip install fastapi uvicorn cryptography pydantic python-multipart python-dotenv
+python install.py
 ```
 
-**Local Whisper CPU transcription:**
+The installer **automatically detects your hardware** and picks the right `llama-cpp-python` wheel:
+
+| Detected Hardware | llama-cpp-python Wheel | Speed |
+|---|---|---|
+| 🚀 NVIDIA CUDA 12.x | `/whl/cu12x` (GPU-enabled) | 5–10× faster |
+| 🚀 NVIDIA CUDA 11.8 | `/whl/cu118` (GPU-enabled) | 4–8× faster |
+| 🍎 Apple M1/M2/M3 | `/whl/metal` (Metal GPU) | 2–4× faster |
+| 🖥️ No GPU / Unknown | `/whl/cpu` (CPU-only) | Works everywhere |
+
+> **Why does this matter?**
+> The CPU wheel (`/whl/cpu`) is **compiled without CUDA support** — even if you have an NVIDIA GPU, that wheel cannot use it.
+> `install.py` detects your CUDA version and downloads the correct pre-built GPU wheel automatically.
+
+### 3. Manual Install *(if you prefer)*
+
+**Core + Whisper:**
 ```bash
+pip install fastapi uvicorn[standard] cryptography pydantic python-multipart python-dotenv
 pip install faster-whisper huggingface_hub
 ```
 
-**Local Gemma 3 1B CPU inference (CPU-only wheel, no CUDA download):**
+**llama-cpp-python — pick ONE based on your hardware:**
+
 ```bash
+# 🚀 NVIDIA CUDA 12.6
+pip install llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu126
+
+# 🚀 NVIDIA CUDA 12.1
+pip install llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu121
+
+# 🚀 NVIDIA CUDA 11.8
+pip install llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu118
+
+# 🍎 Apple Silicon (M1/M2/M3) Metal
+pip install llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/metal
+
+# 🖥️ CPU-only (no GPU / low-end laptop)
 pip install llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
 ```
 
-> 💡 Model weights (`gemma-3-1b-it-Q4_K_M.gguf` ~800 MB and Whisper `base` ~74 MB) are downloaded automatically from HuggingFace **once** on first use, then cached locally — no re-download needed.
+> 💡 Not sure which CUDA version you have? Run `nvidia-smi` in a terminal — look for `CUDA Version: XX.X` in the top-right corner.
 
-### 3. Configure (Optional)
-Copy the example environment file:
+### 4. Configure (Optional)
 ```bash
 cp .env.example .env
 ```
-
-Edit `.env` to set a custom encryption passphrase or Whisper model size:
+Edit `.env`:
 ```env
 WHISPER_MODEL_SIZE=base      # tiny / base / small
-CPU_THREADS=2                # increase if your CPU has more cores
+CPU_THREADS=4                # number of CPU threads for inference
 MASTER_ENCRYPTION_KEY=your-secret-passphrase
 ```
 
-### 4. Run Locally
+### 5. Run EchoNote AI
 ```bash
 python app.py
 ```
-Or with auto-reload for development:
-```bash
-uvicorn app:app --reload --port 8000
-```
+Open **`http://localhost:8000`** 🎉
 
-Open your browser at **`http://localhost:8000`** 🎉
+On startup the console shows your auto-detected hardware:
+```
+────────────────────────────────────────────────────────────
+  🚀  ECHONOTE AI — Hardware Backend
+       Mode  : CUDA
+       Status: NVIDIA GPU — RTX 3060 (12.0 GB VRAM) · CUDA
+       GPU   : NVIDIA GeForce RTX 3060
+       VRAM  : 12.0 GB
+       Whisper compute : float16 on cuda
+       Gemma GPU layers: -1 (all on GPU)
+────────────────────────────────────────────────────────────
+```
 
 > On **first run**, `notes.db` is created automatically.
 > On **subsequent runs**, it connects and loads all your existing encrypted notes.
