@@ -647,27 +647,56 @@ async def answer_transcript_question(
     category: str = "general"
 ) -> str:
     """
-    Grounded Q&A — runs on auto-detected backend (GPU / MPS / CPU).
-    Uses keyword-matched transcript excerpts for accurate grounded answers.
+    Smart Q&A Copilot — runs on auto-detected backend (GPU / MPS / CPU).
+    Answers grounded questions about the note AND general conceptual questions
+    related to the topic. Uses full transcript context + chat history.
     """
     persona = CATEGORY_PERSONAS.get(category, CATEGORY_PERSONAS["general"])
 
-    chunks = split_words(transcript, 200)
-    if len(chunks) <= 3:
-        context = "\n\n".join(chunks)
+    # ── Build transcript context ────────────────────────────────────────────
+    # Use full transcript up to ~1200 words; if longer, pick best chunks first
+    all_words = transcript.split()
+    if len(all_words) <= 1200:
+        context = transcript
     else:
+        chunks = split_words(transcript, 200)
         q_words = set(question.lower().split())
-        scored  = [(sum(1 for w in q_words if w in c.lower()), c) for c in chunks]
+        # Score every chunk by keyword overlap
+        scored = [(sum(1 for w in q_words if w in c.lower()), c) for c in chunks]
         scored.sort(key=lambda x: x[0], reverse=True)
-        context = "\n\n".join(c for _, c in scored[:3])
+        # Always include the top 5 most relevant chunks
+        context = "\n\n".join(c for _, c in scored[:5])
 
-    prompt = (
-        f"You help a person understand an audio recording ({persona['name']}).\n"
-        f"Answer the question using ONLY the SUMMARY and EXCERPTS below.\n"
-        f"If the answer is not in the text, say: 'I did not hear this in the audio.'\n\n"
-        f"SUMMARY:\n{summary[:800]}\n\n"
-        f"EXCERPTS:\n{context}\n\n"
-        f"QUESTION: {question}"
+    # ── Build recent chat history ───────────────────────────────────────────
+    history_text = ""
+    if chat_history:
+        recent = chat_history[-6:]  # last 3 pairs
+        history_lines = []
+        for msg in recent:
+            role = "User" if msg.get("role") == "user" else "Assistant"
+            history_lines.append(f"{role}: {msg.get('content', '').strip()}")
+        if history_lines:
+            history_text = "CONVERSATION HISTORY:\n" + "\n".join(history_lines) + "\n\n"
+
+    # ── Build the prompt ────────────────────────────────────────────────────
+    system_instruction = (
+        f"You are EchoNote Copilot, an AI assistant for a {persona['name']} note.\n"
+        "Your job is to help the user understand and explore their note.\n"
+        "Rules:\n"
+        "1. If the question is directly about content in the note — answer from the transcript/summary.\n"
+        "2. If the question asks you to explain a term, concept, or idea MENTIONED in the note — explain it clearly.\n"
+        "3. If the question is a general follow-up or asks for advice based on the note topic — answer helpfully.\n"
+        "4. Only say 'I did not hear this in the audio' if the question is about a completely unrelated topic "
+        "that has no connection to the note content whatsoever.\n"
+        "Always be concise, helpful, and friendly."
     )
 
-    return call_local_gemma(prompt, max_tokens=350)
+    prompt = (
+        f"{history_text}"
+        f"NOTE SUMMARY:\n{summary[:1000]}\n\n"
+        f"FULL TRANSCRIPT EXCERPT:\n{context[:2000]}\n\n"
+        f"USER QUESTION: {question}\n\n"
+        "Answer:"
+    )
+
+    return call_local_gemma(prompt, system_instruction=system_instruction, max_tokens=450)
