@@ -11,8 +11,9 @@
 [![Whisper](https://img.shields.io/badge/Whisper-faster--whisper%20CPU-orange?style=flat-square)](https://github.com/SYSTRAN/faster-whisper)
 [![Gemma](https://img.shields.io/badge/Gemma-3%201B%20GGUF%20CPU-blueviolet?style=flat-square)](https://huggingface.co/unsloth/gemma-3-1b-it-GGUF)
 [![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
+[![Demo](https://img.shields.io/badge/Demo-YouTube-red?style=flat-square&logo=youtube)](https://youtu.be/ylCl8rsBIuw)
 
-[**Live Demo**](#-run-locally) · [**Features**](#-features) · [**Setup**](#-installation) · [**Deploy**](#️-deploy-on-render)
+[**Watch Demo**](https://youtu.be/ylCl8rsBIuw) · [**Features**](#-features) · [**Setup**](#-installation) · [**Deploy**](#️-deploy-on-render)
 
 </div>
 
@@ -25,6 +26,16 @@
 Designed for **college students, school kids, teachers, working professionals, recipe keepers, and voice note creators**.
 
 > *Upload a lecture. EchoNote AI transcribes it, detects what it is, writes you a tailored summary with exam questions, and lets you chat with Gemma AI about its content — forever stored privately in your encrypted local database.*
+
+---
+
+## 🎬 Demo
+
+Watch EchoNote AI in action:
+
+[![EchoNote AI Demo](https://img.youtube.com/vi/ylCl8rsBIuw/hqdefault.jpg)](https://youtu.be/ylCl8rsBIuw)
+
+▶️ **[Watch on YouTube](https://youtu.be/ylCl8rsBIuw)**
 
 ---
 
